@@ -82,7 +82,8 @@ AtmosFX sets `volume_step_rate`, `volume_max_steps` and `volume_bounces` per tie
 
 **EEVEE.** Volume range is the froxel range: AtmosFX sets `volumetric_end` to the largest domain radius (capped at 60 km),
 but fog and clouds farther than the froxel grid resolves will look coarse. The EEVEE path renders AtmosFX presets
-headlessly on Blender 5.0.1, but volume detail is coarser than Cycles and the result has not been compared frame-for-frame.
+headlessly on Blender 5.0.1 and 5.2.1 LTS, but volume detail is coarser than Cycles and the result has not been
+compared frame-for-frame.
 
 **Colour management.** The brightness anchors assume AgX or Filmic at 0 EV. Stars and the Milky Way vanish at very
 dark exposures by design; raise *Star brightness* instead of exposure.

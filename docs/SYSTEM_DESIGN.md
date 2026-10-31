@@ -151,7 +151,7 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 
 "Configure render settings" can be switched off; the add-on then touches nothing.
 
-## 6. Measured conventions (Blender 5.0.1)
+## 6. Measured conventions (Blender 5.0.1; checks re-run on 5.2.1)
 
 | Fact | Measurement | Pinned by |
 |---|---|---|
@@ -165,8 +165,9 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 | `Sky Texture` radiance is ~30x a 3.0-strength sun lamp's scale | zenith blue ~7 at noon | `SKY_SCALE` |
 | Any world volume blanks the Cycles frame | single Volume Scatter probe | haze-dome design |
 | A bpy wheel needs `read_factory_settings(use_empty=True)` before scenes render | worlds rendered black otherwise | test harness |
-| EEVEE's engine identifier in Blender 5.0.1 is `BLENDER_EEVEE`; headless EEVEE renders work on macOS arm64 | four presets rendered, non-black | `eevee_*` checks |
+| EEVEE's engine identifier is `BLENDER_EEVEE` in 5.0.1 and 5.2.1; headless EEVEE renders work on macOS arm64 | four presets rendered, non-black | `eevee_*` checks |
 | EEVEE 96x96/8-sample renders of AtmosFX presets take ~0.4 s each on an M-series Mac | timing while writing the checks | `eevee_*` checks |
+| Blender 5.2.1 LTS passes the fast suite and every Cycles/EEVEE render check unchanged | 22/22 with each render flag, macOS arm64 | CI matrix, `ATMOSFX_*` suites |
 
 ## 7. Calibration constants (artistic anchors)
 

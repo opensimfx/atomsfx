@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- Verified EEVEE headlessly on macOS arm64 with Blender 5.0.1; added four opt-in EEVEE render checks.
-- Added a CI workflow and excluded `.DS_Store`/`Thumbs.db` from the extension zip.
-- Documented the missing Blender 5.2.1 wheel and the current verification status.
+- Verified Blender 5.2.1 LTS and EEVEE headlessly on macOS arm64; the fast suite and all Cycles/EEVEE render checks
+  pass on both 5.0.1 and 5.2.1.
+- Added four opt-in EEVEE render checks.
+- Added a CI matrix for 5.0.1 (Python 3.11) and 5.2.1 (Python 3.13, Blender wheel archive).
+- Excluded `.DS_Store`/`Thumbs.db` from the extension zip; documented the current verification status.
 
 ## 0.1.0 - first release
 
