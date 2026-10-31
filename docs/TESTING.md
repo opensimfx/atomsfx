@@ -13,10 +13,11 @@
 | `tests/test_identity.py` | Python | 2 | state hash stability |
 | `tests/blender_smoke.py` | `bpy` 5.0.1 | 18 fast | register and create, all 28 presets apply with consistent objects, layer operators, fog modes, time driver, handler, lamp orientation, node property values, quality tiers, camera clip fix, preset operators, save/reload, remove/cleanup, refresh, star image cache |
 | same, `ATMOSFX_RENDER_TESTS=1` | `bpy`, one CPU is enough | +4 renders | star alignment (< 0.3 degree), sun-disc alignment (< 0.3 degree), cloud coverage vs filled area, haze keeps the sky visible |
+| same, `ATMOSFX_EEVEE_TESTS=1` | `bpy`, a GPU/display | +4 renders | clear sky, sunset clouds, dense fog and stars render non-black in EEVEE; the night sky stays dark and contains bright star pixels |
 | `tests/test_blender.py` | `bpy` | 1 | runs the fast Blender suite from pytest (skipped without `bpy`) |
 
 Run: `python -m pytest` (everything available) - `python tests/blender_smoke.py` -
-`ATMOSFX_RENDER_TESTS=1 python tests/blender_smoke.py`.
+`ATMOSFX_RENDER_TESTS=1 python tests/blender_smoke.py` - `ATMOSFX_EEVEE_TESTS=1 python tests/blender_smoke.py`.
 The `bpy` wheel needs Python 3.11: `uv venv --python 3.11 venv311 && uv pip install --python venv311/bin/python bpy==5.0.1 pytest numpy`.
 CI (`.github/workflows/ci.yml`) runs the unit suites, regenerates presets and docs and fails on drift, builds the zip,
 and runs the fast Blender suite.
@@ -32,6 +33,19 @@ and runs the fast Blender suite.
 - A density slice through the cloud group fills the area the coverage setting asks for (within 0.12).
 - Haze does not black out the sky.
 
+## What the EEVEE checks guarantee
+
+Run only with `ATMOSFX_EEVEE_TESTS=1`, because EEVEE needs a GPU/display and CI runners do not have one. Verified on
+macOS arm64 with the Blender 5.0.1 `bpy` wheel, where the engine identifier is `BLENDER_EEVEE` (the checks also
+accept `BLENDER_EEVEE_NEXT`):
+
+- `clear_noon`, `sunset_clouds` and `dense_fog` render to a non-black frame (mean luminance > 0.02, max > 0.2) with
+  the quality tier's volume settings applied.
+- A starry night renders dark (mean < 0.2) with bright star pixels (max > 0.2) covering at least 0.5 % of the frame.
+  Measured on the check render: mean 0.015, 8 % of pixels above 0.05.
+- This is a liveness check, not an image comparison: it catches a black EEVEE frame, a missing engine, or a broken
+  world/volume shader, not subtle colour or density differences from Cycles.
+
 ## Measurements made while building (and where they are recorded)
 
 All in SYSTEM_DESIGN section 6, with the test that pins each. The experiments that changed the design:
@@ -42,9 +56,11 @@ quantile mapping (coverage 0.3 gave 5 % fill and 0.7 gave 91 % before).
 
 ## Not covered
 
-EEVEE rendering; Blender 5.2.1; GPU; Windows/macOS; interactive UI drawing; render-farm animation without the add-on;
-the visual quality of clouds (judged by eye only); long-running memory use; stereo and panoramic cameras (the sky is
-direction-based so should work, untested); scene unit scales other than metres (all lengths are Blender units = metres).
+Blender 5.2.1 (no `bpy` wheel newer than 5.0.1); GPU Cycles; Windows; EEVEE in CI or on GPU-less machines (opt-in);
+EEVEE image quality beyond non-black output (no reference-image comparison); interactive UI drawing; render-farm
+animation without the add-on; the visual quality of clouds (judged by eye only); long-running memory use; stereo and
+panoramic cameras (the sky is direction-based so should work, untested); scene unit scales other than metres (all
+lengths are Blender units = metres).
 
 ## Adding a test
 

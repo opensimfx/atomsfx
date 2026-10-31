@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest numpy bpy==5.0.1
+
+      - name: Pure Python tests
+        run: python -m pytest tests --ignore=tests/test_blender.py
+
+      - name: Fast headless Blender checks
+        run: python tests/blender_smoke.py
+
+      - name: Generated presets and docs are current
+        run: |
+          python tools/gen_presets.py
+          python tools/gen_preset_docs.py
+          git diff --exit-code
+
+      - name: Build extension zip
+        run: python tools/build_extension.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atmosfx-extension
+          path: dist/*.zip

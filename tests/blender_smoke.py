@@ -2,6 +2,7 @@
 
     python tests/blender_smoke.py            # fast checks (~20 s)
     ATMOSFX_RENDER_TESTS=1 python tests/blender_smoke.py     # adds Cycles alignment renders (~2 min on one core)
+    ATMOSFX_EEVEE_TESTS=1 python tests/blender_smoke.py      # adds EEVEE look renders (needs a GPU/display)
 
 Exit status is the number of failed checks.
 """
@@ -398,6 +399,83 @@ def _peak_offset_deg(lum, lens, w=96):
     return math.hypot(ix - w // 2 + 0.5, iy - w // 2 + 0.5) * px_deg
 
 
+def _eevee_engine():
+    engines = [i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
+    for name in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
+        if name in engines:
+            return name
+    return None
+
+
+def _eevee_setup(scene, w=96, h=96, lens=22, samples=8):
+    scene.render.engine = _eevee_engine()
+    scene.eevee.taa_render_samples = samples
+    scene.render.resolution_x, scene.render.resolution_y = w, h
+    scene.render.image_settings.file_format = "OPEN_EXR"
+    scene.render.image_settings.color_depth = "32"
+    scene.render.use_file_extension = False
+    scene.render.film_transparent = False
+    scene.camera.data.lens = lens
+    scene.camera.data.clip_end = 1.0e6
+
+
+def _look_at_horizon(view):
+    """A view that includes the sun (or moon) and the horizon, so sky, clouds and fog are all in frame."""
+    if view.sun_elevation_deg > -3:
+        az, el = view.sun_azimuth_deg, max(view.sun_elevation_deg - 6, 4)
+    elif view.moon_elevation_deg > 5:
+        az = math.degrees(math.atan2(view.moon_vec[0], view.moon_vec[1]))
+        el = max(view.moon_elevation_deg - 4, 4)
+    else:
+        az, el = 180.0, 30.0
+    az, el = math.radians(az), math.radians(el)
+    return (math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el))
+
+
+def eevee_checks():
+    if _eevee_engine() is None:
+        print("SKIP EEVEE checks (the render engine is not available in this build)")
+        return
+
+    def render_preset(pid, w=96, h=96, lens=22):
+        scene = fresh()
+        state.write_preset(scene.atmosfx, P.get(pid))
+        apply.create(scene)
+        _eevee_setup(scene, w, h, lens)
+        return _render(scene, _look_at_horizon(apply.last_view[scene.name]), w, h)
+
+    @check
+    def eevee_clear_sky_renders():
+        lum = render_preset("clear_noon")
+        assert lum.mean() > 0.02, f"clear_noon rendered almost black (mean {lum.mean():.4f})"
+        assert lum.max() > 0.2, f"clear_noon has no bright pixel (max {lum.max():.4f})"
+
+    @check
+    def eevee_sunset_clouds_render():
+        lum = render_preset("sunset_clouds")
+        assert lum.mean() > 0.02, f"sunset_clouds rendered almost black (mean {lum.mean():.4f})"
+        assert lum.max() > 0.2, f"sunset_clouds has no bright pixel (max {lum.max():.4f})"
+
+    @check
+    def eevee_dense_fog_renders():
+        lum = render_preset("dense_fog")
+        assert lum.mean() > 0.02, f"dense_fog rendered almost black (mean {lum.mean():.4f})"
+        assert lum.max() > 0.2, f"dense_fog has no bright pixel (max {lum.max():.4f})"
+
+    @check
+    def eevee_stars_render():
+        scene = fresh()
+        s = scene.atmosfx
+        state.write_preset(s, P.get("starry_night"))
+        s.star_brightness, s.moon_enabled = 8.0, False
+        apply.create(scene)
+        _eevee_setup(scene, samples=8)
+        lum = _render(scene, (0.3, 1.0, 0.6), 96, 96)
+        assert lum.mean() < 0.2, f"night sky is not dark (mean {lum.mean():.4f})"
+        assert lum.max() > 0.2, f"no stars rendered (max {lum.max():.4f})"
+        assert (lum > 0.05).mean() > 0.005, "too few star pixels rendered"
+
+
 def render_checks():
     @check
     def stars_render_where_the_ephemeris_says():
@@ -487,6 +565,8 @@ def render_checks():
 def main() -> int:
     if os.environ.get("ATMOSFX_RENDER_TESTS"):
         render_checks()
+    if os.environ.get("ATMOSFX_EEVEE_TESTS"):
+        eevee_checks()
     failed = 0
     for fn in CHECKS:
         try:
