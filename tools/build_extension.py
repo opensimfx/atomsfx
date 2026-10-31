@@ -17,6 +17,7 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(ROOT, "atmosfx")
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache"}
+EXCLUDE_NAMES = {".DS_Store", "Thumbs.db"}
 EXCLUDE_SUFFIX = (".pyc", ".pyo", ".orig", ".rej", ".swp")
 
 
@@ -74,7 +75,7 @@ def main() -> int:
     for dirpath, dirs, names in os.walk(PKG):
         dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
         for n in sorted(names):
-            if not n.endswith(EXCLUDE_SUFFIX):
+            if n not in EXCLUDE_NAMES and not n.startswith("._") and not n.endswith(EXCLUDE_SUFFIX):
                 files.append(os.path.join(dirpath, n))
     files.sort(key=lambda p: (os.path.relpath(p, PKG) != "blender_manifest.toml", os.path.relpath(p, PKG)))
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:

@@ -103,8 +103,8 @@ The sunlight that reaches a cloud at 4 km crossed far less air than the light at
 right for both, so `AtmosFX Sun` is light-linked to **exclude** the cloud domains and `AtmosFX Sun Clouds`,
 attenuated at the mean mid-height of the layers, is linked to **include only** them. Cloud domains still block the
 ground sun (shadow linking is untouched), so cloud shadows on the ground are correct. Verified: light linking
-restricts a Sun lamp's effect on a volume object in Cycles (test lamp lit the volume only when linked to it).
-Not verified in EEVEE.
+restricts a Sun lamp's effect on a volume object in Cycles (test lamp lit the volume only when linked to it). The
+EEVEE render path is checked for liveness, but the light-linking restriction itself is not separately measured there.
 
 ### 5.3 Fog emits its ambient light
 
@@ -165,6 +165,8 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 | `Sky Texture` radiance is ~30x a 3.0-strength sun lamp's scale | zenith blue ~7 at noon | `SKY_SCALE` |
 | Any world volume blanks the Cycles frame | single Volume Scatter probe | haze-dome design |
 | A bpy wheel needs `read_factory_settings(use_empty=True)` before scenes render | worlds rendered black otherwise | test harness |
+| EEVEE's engine identifier in Blender 5.0.1 is `BLENDER_EEVEE`; headless EEVEE renders work on macOS arm64 | four presets rendered, non-black | `eevee_*` checks |
+| EEVEE 96x96/8-sample renders of AtmosFX presets take ~0.4 s each on an M-series Mac | timing while writing the checks | `eevee_*` checks |
 
 ## 7. Calibration constants (artistic anchors)
 

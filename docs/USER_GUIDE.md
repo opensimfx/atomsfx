@@ -81,7 +81,8 @@ frame with one cloud layer is minutes at 12 samples; use a GPU and denoising for
 AtmosFX sets `volume_step_rate`, `volume_max_steps` and `volume_bounces` per tier.
 
 **EEVEE.** Volume range is the froxel range: AtmosFX sets `volumetric_end` to the largest domain radius (capped at 60 km),
-but fog and clouds farther than the froxel grid resolves will look coarse. Treat EEVEE as unverified in 0.1.
+but fog and clouds farther than the froxel grid resolves will look coarse. The EEVEE path renders AtmosFX presets
+headlessly on Blender 5.0.1, but volume detail is coarser than Cycles and the result has not been compared frame-for-frame.
 
 **Colour management.** The brightness anchors assume AgX or Filmic at 0 EV. Stars and the Milky Way vanish at very
 dark exposures by design; raise *Star brightness* instead of exposure.
