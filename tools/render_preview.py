@@ -1,4 +1,4 @@
-"""Render preset previews headless (Cycles, CPU). Needs the ``bpy`` wheel (Python 3.11, Blender 5.0.1).
+"""Render preset previews headless (Cycles, CPU). Needs the ``bpy`` wheel (Python 3.11/3.13, Blender 5.0.1/5.2.1).
 
     python tools/render_preview.py clear_noon golden_hour --out docs/img --width 640 --samples 32
     python tools/render_preview.py --all --out docs/img
