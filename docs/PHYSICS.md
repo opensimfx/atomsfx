@@ -99,7 +99,11 @@ The haze dome radius is `1.4 V` (transmittance 0.3 % at the edge).
   Render defaults sit in the low half of that range because a path tracer with a few volume bounces darkens thick
   clouds (measured: 0.05 /m cumulus rendered as dark storm cloud; 0.02 /m reads as cumulus).
 - **Phase**: two Henyey-Greenstein lobes, forward `g` 0.7-0.85 and a back lobe -0.25 at 25 %.
-- **Coverage**: quantile of the normal shape field (see SYSTEM_DESIGN 5.4).
+- **Coverage**: quantile of the normal shape field (see SYSTEM_DESIGN 5.5).
+- **Multiple scattering**: `physics.cloud_scatter_lighting` returns the ambient base, top colour and
+  forward-scatter halo the shader emits in proportion to density. It is display-calibrated, not radiative
+  transfer: a high sun gives a blue shadowed base and a bright neutral top; a low sun gives a warm underside
+  because the light reaches the cloud from below. See SYSTEM_DESIGN 5.4.
 - **Wind** `v` (m/s) shifts the noise lookup by `-v t freq`, with `t = (frame - 1)/fps` seconds.
 - **Genera** altitude/thickness follow WMO levels for mid-latitudes (`physics.CLOUD_TYPE_ALTITUDES_M`).
 

@@ -308,16 +308,69 @@ def sky_ambient_scale(sun_elevation_deg: float) -> float:
 
 
 def cloud_lit_color(sun_elevation_deg: float, aerosol_beta: float = 0.05) -> tuple[float, float, float]:
-    """Colour of a sunlit high cloud deck (white-ish, tinted by the beam reaching it).
+    """Colour of a sunlit high cloud deck (pale at noon, pink/gold at sunset).
 
-    Clouds are far above most of the air mass, so the reddening is weaker than at the ground.
+    Clouds are far above most of the air mass, so their reddening is weaker than the ground's, but a low
+    sun still warms them. The neutral-to-tint blend eases in only once the sun is low, so midday decks stay
+    white; the blend is anchored below the horizon so twilight decks do not go black from saturation alone.
     """
     h = max(sun_elevation_deg, -4.0)
     t = sun_transmittance_rgb(h, aerosol_beta * 0.4)
     m = max(t) or 1.0
+    tint = tuple(x / m for x in t)
+    neutral = tuple(0.85 + 0.15 * c for c in tint)
+    warm = tuple(0.25 + 0.75 * c for c in tint)
+    low = smoothstep(18.0, 1.0, sun_elevation_deg)
     k = smoothstep(-6.0, 6.0, sun_elevation_deg)
-    base = tuple(0.85 + 0.15 * (x / m) for x in t)
+    base = tuple((1.0 - low) * n + low * w for n, w in zip(neutral, warm))
     return tuple(c * k for c in base)  # type: ignore[return-value]
+
+
+CLOUD_SHADOW_COLOR = (0.5, 0.75, 1.0)          # diffuse sky reaching a cloud base (blue, not neutral grey)
+CLOUD_SHADOW_GAIN = 0.12                       # share of the ground-level sky ambient that reaches the base
+CLOUD_LOW_SUN_FILL = 0.16                      # underside fill when the sun is low: light comes from below
+CLOUD_TOP_SUN_FILL = 0.06                      # multiply the cloud-height sun strength for the sunlit top
+CLOUD_TOP_LOW_FILL = 0.20                      # extra multiple-scattered fill near the top at low sun
+CLOUD_GLOW_BASE = 0.15                         # forward-scatter halo strength at high sun (subtle)
+CLOUD_GLOW_LOW_GAIN = 4.0                      # extra halo at low sun, when the beam is warm and backlit
+CLOUD_MOON_FILL = 0.12                         # moonlit multiple-scatter fill (fraction of the moon lamp)
+
+
+def cloud_scatter_lighting(sun_elevation_deg: float, sun_color: tuple, cloud_sun_color: tuple,
+                           cloud_sun_strength: float, sky_ambient: float,
+                           moon_lamp: float = 0.0, moon_color: tuple = (1.0, 1.0, 1.0)
+                           ) -> tuple[tuple, tuple, tuple, float]:
+    """Colours and strength for the cloud multiple-scatter approximation.
+
+    Returns ``(ambient, top, glow_color, glow_strength)``. The shader mixes ``ambient`` at the base to
+    ``top`` near the top of the layer, and adds ``glow_color`` as a forward-scatter lobe whose strength
+    scales with local density. This is display-calibrated, not a radiative-transfer solution: it restores
+    the energy that a path tracer misses after a handful of volume bounces, using anchors measured in
+    Cycles (a high sun wants a dark blue base and a neutral bright top; a low sun wants a warm underside).
+
+    ``sky_ambient`` is the same diffuse-sky term used by the fog (0.25 * sky strength * ambient scale).
+    """
+    low = smoothstep(15.0, -2.0, sun_elevation_deg)          # 1 near the horizon, 0 by mid-morning
+    daylight = smoothstep(-2.0, 1.0, sun_elevation_deg)      # no sun-struck fill once the beam is gone
+    if sun_elevation_deg > -2.0:
+        # Blend the reddened direct beam with the less-reddened light at cloud height.
+        warm = tuple(0.5 * (s + c) for s, c in zip(sun_color, cloud_sun_color))
+    else:
+        warm = (0.0, 0.0, 0.0)
+
+    shadow = tuple(CLOUD_SHADOW_GAIN * sky_ambient * c for c in CLOUD_SHADOW_COLOR)
+    ambient = tuple(s + w * CLOUD_LOW_SUN_FILL * low * daylight for s, w in zip(shadow, warm))
+    top = tuple(s + w * (CLOUD_TOP_SUN_FILL * max(cloud_sun_strength, 0.0) + CLOUD_TOP_LOW_FILL * low * daylight)
+                for s, w in zip(shadow, warm))
+
+    # Moonlight is a separate, much weaker source; give it a little extra weight near the top.
+    moon_fill = tuple(CLOUD_MOON_FILL * max(moon_lamp, 0.0) * c for c in moon_color)
+    ambient = tuple(a + m for a, m in zip(ambient, moon_fill))
+    top = tuple(t + 1.8 * m for t, m in zip(top, moon_fill))
+
+    glow = tuple(sun_color) if daylight > 0.0 else (0.0, 0.0, 0.0)
+    glow_strength = (CLOUD_GLOW_BASE + CLOUD_GLOW_LOW_GAIN * low) * daylight
+    return ambient, top, glow, glow_strength
 
 
 def exposure_ev(illuminance_lux: float, reference_lux: float = SUN_LUX_ZENITH_CLEAR,

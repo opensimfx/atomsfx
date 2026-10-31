@@ -60,7 +60,8 @@ astronomical twilight (the readout says "night"). Face the camera toward the Mil
 exposure 0, and *Stars* brightness 1-2.
 
 **Golden-hour landscape.** Preset *Golden hour*. Aim the camera within 60 degrees of the sun azimuth.
-Raise *Aerosols* for redder light. Clouds at this hour are lit by the cloud sun.
+Raise *Aerosols* for redder light. Clouds at this hour are lit by the cloud sun and warm from below by the
+multiple-scatter fill; the 2D deck picks up the same warmth.
 
 **A day in 10 seconds.** Earth mode, *Animate time* on, *Hours per second* = 2.4 for 24 hours in 10 s at any frame
 rate. The add-on must be enabled when you render on another machine.
@@ -78,7 +79,8 @@ vanishes silently. The main panel warns and fixes it.
 
 **Cycles** (recommended). Draft gives a quick look; Final turns on 12 volume bounces. On one CPU core, a 640x360
 frame with one cloud layer is minutes at 12 samples; use a GPU and denoising for real work. If *Set render* is on,
-AtmosFX sets `volume_step_rate`, `volume_max_steps` and `volume_bounces` per tier.
+AtmosFX sets `volume_step_rate`, `volume_max_steps` and `volume_bounces` per tier, and relaxes the step rate when
+every enabled cloud layer is optically thin.
 
 **EEVEE.** Volume range is the froxel range: AtmosFX sets `volumetric_end` to the largest domain radius (capped at 60 km),
 but fog and clouds farther than the froxel grid resolves will look coarse. The EEVEE path renders AtmosFX presets
@@ -101,7 +103,7 @@ resolution changes rebake (a fraction of a second at 4K). Turn *Live update* off
 | Stars missing in daylight/twilight | By design: the limiting magnitude falls with the sun's elevation. Check the *Readout*. |
 | Moon not visible | Elevation below the horizon, or *Moon* off. In Earth mode it follows the real moon: check the phase in the readout. |
 | Everything is too bright | The anchors assume AgX/Filmic at 0 EV. Lower *Sky strength* and *Sun strength*, not exposure, for artistic changes. |
-| Clouds look grey with dark bases | Expected in 0.1 (see the README's known limitations). Lower density, raise coverage gaps, or use the 2D deck. |
+| Clouds look flat or grey | Raise *Coverage* gaps or lower *Density* so sunlight reaches deeper. At low sun the multiple-scatter fill warms undersides; at high sun a denser layer still looks darker than real clouds because the approximation is display-calibrated, not radiative transfer. |
 | File opens with missing star map | The image is packed; if you unpacked it, press the rebuild button. |
 | Preset import fails | Look at the message: the file is validated against the schema; a newer schema number is refused. |
 

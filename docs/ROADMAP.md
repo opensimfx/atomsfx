@@ -2,9 +2,12 @@
 
 Ordered by value for the effort, not by date.
 
+**Done (unreleased 0.2)**
+- Cloud look-dev: density-weighted multiple-scatter fill (bright tops, blue shadowed bases), a warm low-sun and
+  backlit solution with a forward-scatter halo, a warmer sunset deck, and a per-layer optical-depth budget for the
+  scene's volume step rate.
+
 **Next (0.2)**
-- Cloud look-dev: brighter tops and warmer lit edges (an explicit multiple-scatter approximation instead of raw
-  bounces), a sunset/backlit cloud solution, cheaper step-size heuristics per layer.
 - Clouds at distance: an impostor ring or 2D deck blend so the 15 km domain edge never shows near the horizon.
 - Auto exposure from the physical illuminance (`physics.exposure_ev` exists, unused).
 - Panels drawn and used in a real session; fix whatever that finds.

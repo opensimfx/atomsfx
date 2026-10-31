@@ -78,8 +78,9 @@ World-space position, so objects can be moved and scaled freely. Density =
 `smoothstep(field, threshold, threshold + softness) * Density * radial_fade` where
 `field = fbm(p * frequency, octaves) + anvil - 0.32 (1 - profile) - detail_erosion`.
 `profile` is the height profile of the kind (flat base, rounded top). Two Henyey-Greenstein lobes (forward `g`,
-back -0.25 at 25 %) approximate cloud phase. Outputs `Volume`, plus `Density`, `Field` and `Base Noise` for
-diagnostics (the coverage test renders the `Density` output).
+back -0.25 at 25 %) approximate cloud phase, plus an **ambient/top emission and a forward-scatter halo** for the
+multiple scattering a bounded path tracer cannot build up (section 5.4). Outputs `Volume`, plus `Density`, `Field`
+and `Base Noise` for diagnostics (the coverage test renders the `Density` output).
 
 ### 4.3 `AtmosFX Fog` (volume)
 
@@ -114,19 +115,33 @@ shaders add an Emission term `density * ambient`, where `ambient` is the diffuse
 forward scatter (`skyview.fog_ambient`). Physically this is the equilibrium radiance of a scattering medium.
 It slightly double counts single scattering; that is accepted.
 
-### 5.4 Cloud coverage means filled area
+### 5.4 Clouds emit their multiple scattering
+
+Like fog, a cloud is mostly multiply scattered light, and a path tracer with a handful of volume bounces renders
+thick layers too dark and too grey. The cloud shader therefore adds an emission proportional to local density:
+
+`ambient -> top` mixed by `smoothstep(height, 0.35, 0.9)`, plus a forward-scatter halo
+`density * Glow Strength * max(dot(-Incoming, Sun), 0)^8`.
+
+`physics.cloud_scatter_lighting` derives the colours from the same inputs as the lamps: a cool blue base while the
+sun is high (shadowed underside), a warm base once the sun is low (the beam comes from below), a bright top scaled
+by the cloud-height sun strength, and a halo that grows as the beam reddens. Anchors were tuned against Cycles
+renders of `sunset_clouds` and `fair_weather_cumulus`. This is display calibration, not radiative transfer: it
+double counts a little single scattering, which is accepted for the same reason as the fog term.
+
+### 5.5 Cloud coverage means filled area
 
 The shape field is approximately normal (mean 0.50, sd 0.08 for normalised fractal noise, measured by rendering a
 density slice). `coverage_threshold(c) = 0.5 - 0.08 * probit(c)` makes the filled fraction equal `c`. Measured
 filled fractions for coverage 0.1 / 0.25 / 0.4 / 0.6 / 0.8 were 0.09 / 0.23 / 0.37 / 0.57 / 0.77. The render test
 repeats this and requires agreement within 0.12.
 
-### 5.5 Clouds and the sun lamp are not double counted
+### 5.6 Clouds and the sun lamp are not double counted
 
 Volumetric clouds cast real shadows and hide real stars in the render, so they do *not* reduce the lamp or the star
 limiting magnitude. Only the 2D deck (which casts nothing) does.
 
-### 5.6 Star map
+### 5.7 Star map
 
 `core/starmap.bake_star_map` returns a float array in the J2000 frame; the scene layer wraps it in a half-float,
 `Non-Color` image, packs it, and names it `AtmosFX Stars <hash>`, where the hash covers resolution, seed, density and
@@ -134,13 +149,13 @@ the catalogue version. Changing brightness, limiting magnitude or time never reb
 rotates). The image's colour space and precision **must be set before the pixels**: changing either on a generated
 image regenerates it blank (found the hard way; a test pins it).
 
-### 5.7 Time
+### 5.8 Time
 
 Cloud, deck and fog motion use a `Value` node driven by the expression `(frame - 1) / fps * fps_base`, so wind is
 frame-rate independent and needs no Python at render time. Earth-mode clock animation needs the ephemeris and runs in
 a persistent `frame_change_post` handler (so the add-on must be enabled on a render farm).
 
-### 5.8 Quality tiers
+### 5.9 Quality tiers
 
 | | Draft | Preview | Final |
 |---|---|---|---|
@@ -149,7 +164,10 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 | Cycles volume step rate / bounces / max steps | 3.0 / 2 / 512 | 1.5 / 4 / 1024 | 0.75 / 12 / 2048 |
 | EEVEE volume tile / samples / shadows | 8 / 48 / off | 4 / 64 / on | 2 / 128 / on |
 
-"Configure render settings" can be switched off; the add-on then touches nothing.
+The step rate is multiplied by `clouds.step_rate_scale`, a per-layer optical-depth budget collapsed into one
+scene value (Cycles exposes one step rate): a dense layer keeps the table value, while a scene made only of thin
+layers (cirrus, thin altostratus) relaxes it. "Configure render settings" can be switched off; the add-on then
+touches nothing.
 
 ## 6. Measured conventions (Blender 5.0.1; checks re-run on 5.2.1)
 
@@ -167,7 +185,8 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 | A bpy wheel needs `read_factory_settings(use_empty=True)` before scenes render | worlds rendered black otherwise | test harness |
 | EEVEE's engine identifier is `BLENDER_EEVEE` in 5.0.1 and 5.2.1; headless EEVEE renders work on macOS arm64 | four presets rendered, non-black | `eevee_*` checks |
 | EEVEE 96x96/8-sample renders of AtmosFX presets take ~0.4 s each on an M-series Mac | timing while writing the checks | `eevee_*` checks |
-| Blender 5.2.1 LTS passes the fast suite and every Cycles/EEVEE render check unchanged | 22/22 with each render flag, macOS arm64 | CI matrix, `ATMOSFX_*` suites |
+| Cloud multiple-scatter fill: at 52 degrees the base is blue (B/R 2.0) and the top is 8x brighter; at 4 degrees the base is warm (R/B 3.2) and the halo strength is 20x noon | `cloud_scatter_lighting` values, Cycles previews of `fair_weather_cumulus` and `sunset_clouds` | `test_cloud_lighting_*` |
+| Blender 5.2.1 LTS passes the fast suite and every Cycles/EEVEE render check unchanged | 27/27 with both render flags, macOS arm64 | CI matrix, `ATMOSFX_*` suites |
 
 ## 7. Calibration constants (artistic anchors)
 
@@ -179,6 +198,8 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 | `STAR_GAIN` | 0.08 | `skyview` | eye-calibrated for a dark-sky render |
 | `MILKY_WAY_SCALE` | 0.22 | `nodes/sky.py` | eye-calibrated |
 | `MOON_GLOW` | 0.012 | `skyview` | eye-calibrated |
+| `CLOUD_LOW_SUN_FILL` / `CLOUD_TOP_LOW_FILL` | 0.16 / 0.20 | `physics` | warm underside/top multiple-scatter fill at low sun |
+| `CLOUD_GLOW_LOW_GAIN` | 4.0 | `physics` | forward-scatter halo at low sun |
 
 ## 8. Preset schema
 

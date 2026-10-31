@@ -196,7 +196,7 @@ def _fog_edge_fade(nt, group_node) -> None:
     nt.links.new(b.math("MULTIPLY", side, top), group_node.inputs["Edge Fade"])
 
 
-def update_cloud_layers(scene, s, quality: str) -> None:
+def update_cloud_layers(scene, s, view, quality: str) -> None:
     coll = ensure_collection(scene)
     wanted = {CLOUD_PREFIX + str(i + 1) for i in range(len(s.clouds))}
     for o in list(bpy.data.objects):
@@ -222,7 +222,15 @@ def update_cloud_layers(scene, s, quality: str) -> None:
         obj.material_slots[0].material = mat
         node = mat.node_tree.nodes["AtmosFX Group"]
         node.node_tree = group
-        for k, v in cloudlib.socket_values(layer, quality).items():
+        vals = cloudlib.socket_values(layer, quality)
+        vals.update({
+            "Ambient": (*view.cloud_ambient, 1.0),
+            "Top Color": (*view.cloud_top, 1.0),
+            "Glow Color": (*view.cloud_glow, 1.0),
+            "Sun Direction": view.sun_vec,
+            "Glow Strength": view.cloud_glow_strength,
+        })
+        for k, v in vals.items():
             sock = node.inputs.get(k)
             if sock is not None:
                 try:
