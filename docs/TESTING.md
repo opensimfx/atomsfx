@@ -7,11 +7,11 @@
 | `tests/test_physics.py` | Python | 25 | Koschmieder, air mass, Rayleigh, sun colour and strength (also with altitude), blackbody, star colours, Allen moon photometry, limiting magnitude, twilight names |
 | `tests/test_astro.py` | Python | 18 | Julian date, GMST, Sun (Meeus 25.a), Moon (Meeus 47.a), phases at real syzygies, sunrise/sunset, refraction, precession, Euler convention, galactic frame, artistic moon geometry |
 | `tests/test_stars.py` | Python, numpy | 18 | catalogue separations and integrity, measured equirect convention, PSF/threshold maths, bake placement, determinism, Milky Way weighting |
-| `tests/test_clouds.py` | Python | 7 | kinds, quantile coverage mapping, wind vector, seeds, socket values, height profile, cost |
+| `tests/test_clouds.py` | Python | 8 | kinds, quantile coverage mapping, wind vector, seeds, socket values, height profile, cost, step-rate budget |
 | `tests/test_presets.py` | Python | 10 | every shipped preset validates, JSON and file round trips, schema refusal, derive, physical sanity, generator parity |
-| `tests/test_skyview.py` | Python | 17 | the full parameters-to-values chain: lamps, discs, stars, moon geometry, Earth vs Artistic, animation clock, north offset, cloud sun |
+| `tests/test_skyview.py` | Python | 21 | the full parameters-to-values chain: lamps, discs, stars, moon geometry, Earth vs Artistic, animation clock, north offset, cloud sun, multiple-scatter cloud lighting |
 | `tests/test_identity.py` | Python | 2 | state hash stability |
-| `tests/blender_smoke.py` | `bpy` 5.0.1 / 5.2.1 | 18 fast | register and create, all 28 presets apply with consistent objects, layer operators, fog modes, time driver, handler, lamp orientation, node property values, quality tiers, camera clip fix, preset operators, save/reload, remove/cleanup, refresh, star image cache |
+| `tests/blender_smoke.py` | `bpy` 5.0.1 / 5.2.1 | 19 fast | register and create, all 28 presets apply with consistent objects, layer operators, fog modes, time driver, handler, lamp orientation, node property values, quality tiers, camera clip fix, preset operators, save/reload, remove/cleanup, refresh, star image cache, cloud lighting sockets |
 | same, `ATMOSFX_RENDER_TESTS=1` | `bpy`, one CPU is enough | +4 renders | star alignment (< 0.3 degree), sun-disc alignment (< 0.3 degree), cloud coverage vs filled area, haze keeps the sky visible |
 | same, `ATMOSFX_EEVEE_TESTS=1` | `bpy`, a GPU/display | +4 renders | clear sky, sunset clouds, dense fog and stars render non-black in EEVEE; the night sky stays dark and contains bright star pixels |
 | `tests/test_blender.py` | `bpy` | 1 | runs the fast Blender suite from pytest (skipped without `bpy`) |

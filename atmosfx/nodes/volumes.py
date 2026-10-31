@@ -12,7 +12,7 @@ from .sky import add_time_driver
 
 CLOUD_GROUP = "AtmosFX Cloud"
 FOG_GROUP = "AtmosFX Fog"
-CLOUD_VERSION = 6
+CLOUD_VERSION = 7
 FOG_VERSION = 3
 
 CLOUD_INPUTS = [
@@ -35,6 +35,11 @@ CLOUD_INPUTS = [
     ("Anisotropy", "NodeSocketFloat", 0.8, (0.0, 0.99)),
     ("Back Anisotropy", "NodeSocketFloat", -0.25, (-0.99, 0.0)),
     ("Back Weight", "NodeSocketFloat", 0.25, (0.0, 1.0)),
+    ("Ambient", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0), None),
+    ("Top Color", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0), None),
+    ("Glow Color", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0), None),
+    ("Sun Direction", "NodeSocketVector", (0.0, 0.0, 1.0), None),
+    ("Glow Strength", "NodeSocketFloat", 0.0, (0.0, 20.0)),
 ]
 
 FOG_INPUTS = [
@@ -127,7 +132,34 @@ def build_cloud_group(scene: bpy.types.Scene) -> bpy.types.NodeTree:
     b.set(mixer.inputs[0], gi("Back Weight"))
     tree.links.new(fwd.outputs[0], mixer.inputs[1])
     tree.links.new(back.outputs[0], mixer.inputs[2])
-    tree.links.new(mixer.outputs[0], gout.inputs["Volume"])
+
+    # Multiple-scatter approximation: emission proportional to density. A path tracer with a few volume
+    # bounces loses the light that real clouds keep bouncing; this restores it, dark-blue at the shadowed
+    # base and bright at the sunlit top. See physics.cloud_scatter_lighting for the calibrated anchors.
+    b.col()
+    top_mix = b.smoothstep(h, 0.35, 0.9)
+    ambient_color = b.mix_rgb(top_mix, gi("Ambient"), gi("Top Color"))
+    ambient = b.node("ShaderNodeEmission", "Ambient In-scatter")
+    b.set(ambient.inputs["Color"], ambient_color)
+    b.set(ambient.inputs["Strength"], density)
+
+    # Forward-scatter halo: strongest when the view points into the sun, which is what makes backlit
+    # edges glow at sunset. The lobe is a power of the view/sun cosine, separate from the HG phase above.
+    incoming = b.node("ShaderNodeNewGeometry").outputs["Incoming"]
+    facing = b.math("MAXIMUM", b.math("MULTIPLY", b.dot(incoming, gi("Sun Direction")), -1.0), 0.0)
+    phase = b.math("POWER", facing, 8.0)
+    glow_strength = b.math("MULTIPLY", b.math("MULTIPLY", density, gi("Glow Strength")), phase)
+    glow = b.node("ShaderNodeEmission", "Forward Glow")
+    b.set(glow.inputs["Color"], gi("Glow Color"))
+    b.set(glow.inputs["Strength"], glow_strength)
+
+    add_ambient = b.node("ShaderNodeAddShader")
+    tree.links.new(mixer.outputs[0], add_ambient.inputs[0])
+    tree.links.new(ambient.outputs[0], add_ambient.inputs[1])
+    add_glow = b.node("ShaderNodeAddShader")
+    tree.links.new(add_ambient.outputs[0], add_glow.inputs[0])
+    tree.links.new(glow.outputs[0], add_glow.inputs[1])
+    tree.links.new(add_glow.outputs[0], gout.inputs["Volume"])
     tree.links.new(density, gout.inputs["Density"])
     tree.links.new(field, gout.inputs["Field"])
     tree.links.new(base, gout.inputs["Base Noise"])

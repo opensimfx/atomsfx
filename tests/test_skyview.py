@@ -143,6 +143,38 @@ def test_moon_size_scale_and_distance_effects():
     assert math.degrees(v1.moon_radius_rad * 2) == pytest.approx(0.5286, abs=1e-3)
 
 
+def test_cloud_lighting_has_a_dark_blue_base_and_a_bright_top():
+    noon = view(sun_elevation=52, cloud_lit_altitude_m=2200)
+    assert max(noon.cloud_ambient) < 0.05
+    assert noon.cloud_ambient[2] > noon.cloud_ambient[0]               # shadowed base is blue
+    assert noon.cloud_top[2] > 5 * noon.cloud_ambient[2]               # sunlit top dominates
+    assert noon.cloud_glow_strength < 0.5                              # forward halo is subtle at high sun
+
+
+def test_cloud_lighting_is_warm_and_backlit_at_sunset():
+    noon = view(sun_elevation=52, cloud_lit_altitude_m=2200)
+    dusk = view(sun_elevation=4, sun_azimuth=268, cloud_lit_altitude_m=4200)
+    assert dusk.cloud_ambient[0] > 2.5 * dusk.cloud_ambient[2]         # light comes from below, and it is red
+    assert dusk.cloud_top[0] > dusk.cloud_top[2]
+    assert dusk.cloud_ambient[0] > 4 * noon.cloud_ambient[0]
+    assert dusk.cloud_glow_strength > 5 * noon.cloud_glow_strength
+    assert dusk.cloud_glow[0] > dusk.cloud_glow[2]                     # warm forward-scatter halo colour
+
+
+def test_cloud_lighting_fades_at_night_and_tracks_the_moon():
+    dark = view(sun_elevation=-35, moon_enabled=False, cloud_lit_altitude_m=3000)
+    assert max(dark.cloud_ambient) < 0.005 and dark.cloud_glow_strength == 0.0
+    moonlit = view(sun_elevation=-35, moon_enabled=True, moon_phase=0.5, cloud_lit_altitude_m=3000)
+    assert max(moonlit.cloud_ambient) > 5 * max(dark.cloud_ambient)
+    assert max(moonlit.cloud_top) > max(moonlit.cloud_ambient)
+
+
+def test_cloud_deck_turns_warm_at_sunset():
+    noon, dusk = view(sun_elevation=52), view(sun_elevation=4)
+    assert noon.deck_color[2] > 0.85 * noon.deck_color[0]
+    assert dusk.deck_color[2] < 0.7 * dusk.deck_color[0]
+
+
 def test_cloud_sun_is_off_without_volumetric_layers_and_beats_the_ground_sun_at_sunset():
     plain = view(sun_elevation=3)
     assert plain.cloud_sun_strength == 0.0

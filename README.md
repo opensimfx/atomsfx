@@ -16,7 +16,17 @@ documented physics you can read in [docs/PHYSICS.md](docs/PHYSICS.md).
 | ![Starry night](docs/img/starry_night.png) | ![Milky Way](docs/img/milky_way.png) |
 | ![Sunset clouds](docs/img/sunset_clouds.png) | ![Dense fog](docs/img/dense_fog.png) |
 
-_Renders above: headless Cycles on one CPU core, 10-12 samples, OpenImageDenoise, ACES preview tone-map
+### More environments
+
+| | | |
+|---|---|---|
+| ![Clear noon](docs/img/clear_noon.png) | ![Fair-weather cumulus](docs/img/fair_weather_cumulus.png) | ![Billowing cumulus](docs/img/cumulus_day.png) |
+| ![Mackerel sky](docs/img/mackerel_sky.png) | ![Stratocumulus deck](docs/img/stratocumulus_sky.png) | ![Overcast stratus](docs/img/overcast_stratus.png) |
+| ![Volumetric cirrus sunset](docs/img/volumetric_cirrus_sunset.png) | ![Sunrise over mist](docs/img/sunrise_mist.png) | ![Morning mist](docs/img/morning_mist.png) |
+| ![High altitude](docs/img/high_altitude.png) | ![Arctic clarity](docs/img/arctic_clear.png) | ![Storm front](docs/img/storm_cumulonimbus.png) |
+| ![Valley fog](docs/img/valley_fog.png) | ![City smog](docs/img/city_smog.png) | ![Desert dust](docs/img/desert_dust.png) |
+
+_Renders: headless Cycles on one CPU core, 12 samples, OpenImageDenoise, ACES preview tone-map
 (`tools/render_preview.py`). They are look-dev checks, not showpieces._
 
 ## Features
@@ -31,9 +41,10 @@ _Renders above: headless Cycles on one CPU core, 10-12 samples, OpenImageDenoise
 - **Milky Way**: galactic-frame procedural band with dust lanes and a warm bulge.
 - **Moon**: phase from the true Sun-Earth-Moon geometry, procedural maria, moonlit sky glow, moon lamp.
 - **Clouds**: up to three volumetric layers (cumulus, stratocumulus, stratus, altocumulus, altostratus,
-  cumulonimbus, cirrus) with coverage that equals filled area, wind advected by scene time, and a **separate
-  cloud sun** (light-linked) attenuated at cloud height so clouds can glow while the ground is already dim.
-- **2D cloud deck**: infinite cirrus/altostratus in the world shader; free to render; no shadows.
+  cumulonimbus, cirrus) with coverage that equals filled area, wind advected by scene time, a **separate cloud sun**
+  (light-linked) attenuated at cloud height so clouds can glow while the ground is already dim, and a
+  **multiple-scatter fill** with bright tops, warm undersides at low sun and a backlit forward-scatter halo.
+- **2D cloud deck**: infinite cirrus/altostratus in the world shader; free to render; no shadows; warms with a low sun.
 - **Fog and haze**: visibility in metres (Koschmieder), exponential height falloff, patchiness, absorption (smog),
   as a camera-following haze dome and/or a placeable fog bank.
 - **28 presets** in five categories ([docs/PRESETS.md](docs/PRESETS.md)); export/import your own as JSON.
@@ -64,12 +75,13 @@ A scripted version is in [examples/quickstart.py](examples/quickstart.py). Full 
 
 Verified on **Blender 5.0.1 and 5.2.1 LTS (`bpy` wheels), macOS arm64**:
 
-- 97 pure-Python unit tests: ephemeris against Meeus worked examples, photometry, star catalogue separations,
-  cloud mapping, preset schema, derived sky values.
-- 22 headless Blender checks, 4 of them renders: stars land within 0.3 degrees of their computed positions (measured
+- 102 pure-Python unit tests: ephemeris against Meeus worked examples, photometry, star catalogue separations,
+  cloud mapping, multiple-scatter lighting, preset schema, derived sky values.
+- 23 headless Blender checks, 4 of them renders: stars land within 0.3 degrees of their computed positions (measured
   0.05-0.08), the sun disc within 0.1 degree, a rendered cloud slice fills the area the coverage setting promises,
-  haze keeps the sky visible. The same 22 checks pass on 5.0.1 and 5.2.1; Cycles CPU was also checked on Linux at
-  0.1. Install-as-extension from the built zip registers and runs on both versions.
+  haze keeps the sky visible, and every cloud material receives the derived multiple-scatter colours. The same 23
+  checks pass on 5.0.1 and 5.2.1; Cycles CPU was also checked on Linux at 0.1. Install-as-extension from the built zip
+  registers and runs on both versions.
 - 4 opt-in EEVEE render checks: clear sky, sunset clouds, dense fog and a star field all render non-black on both
   versions, and the night sky contains bright star pixels. Volume quality is coarser than Cycles.
 
@@ -78,8 +90,9 @@ Verified on **Blender 5.0.1 and 5.2.1 LTS (`bpy` wheels), macOS arm64**:
 - Blender versions other than 5.0.1 and 5.2.1; Windows; GPU Cycles; EEVEE on CI or a machine without a GPU/display
   (the EEVEE checks are opt-in for this reason).
 - The panels were never drawn in an interactive Blender session; only their operators and properties were exercised.
-- Cloud *appearance* is early look-dev: clouds render grey and dark-based next to the sky, sunset clouds are not
-  golden. Cloud render cost is high (minutes per frame on one CPU core at 640x360).
+- Cloud *appearance* is display-calibrated look-dev, not a reference match: the multiple-scatter fill gives bright
+  tops and warm low-sun undersides, but thick clouds still look flatter than real ones and the term double counts a
+  little single scattering. Cloud render cost is high (minutes per frame on one CPU core at 640x360).
 - Absolute brightness constants (sun 3.0, moon 0.12, star gain, Milky Way) are calibrated by eye for AgX/Filmic at
   0 EV, not measured.
 - The star catalogue was entered by hand from published values and checked only by known angular separations, not
@@ -105,11 +118,11 @@ examples/                scripts that build a scene from the command line
 ```bash
 python -m pytest                          # pure tests (numpy needed for the star baker tests)
 # bpy: Python 3.11 for 5.0.1; Python 3.13 for 5.2.1 (download.blender.org/pypi)
-python tests/blender_smoke.py             # needs bpy: 18 checks, ~20 s
+python tests/blender_smoke.py             # needs bpy: 19 checks, ~20 s
 ATMOSFX_RENDER_TESTS=1 python tests/blender_smoke.py   # + 4 Cycles render checks, ~1 min
 ATMOSFX_EEVEE_TESTS=1 python tests/blender_smoke.py    # + 4 EEVEE render checks, needs a GPU/display
 python tools/gen_presets.py               # regenerate data/presets.json from the table in the tool
-python tools/render_preview.py golden_hour --out docs/img --width 640 --samples 12
+python tools/render_preview.py golden_hour --out docs/img --width 640 --samples 12   # README gallery
 ```
 
 ## Documentation

@@ -109,6 +109,10 @@ class SkyView:
     deck_color: tuple
     deck_sun_light: tuple = (0.0, 0.0, 0.0)
     fog_ambient: tuple = (0.0, 0.0, 0.0)
+    cloud_ambient: tuple = (0.0, 0.0, 0.0)
+    cloud_top: tuple = (0.0, 0.0, 0.0)
+    cloud_glow: tuple = (1.0, 1.0, 1.0)
+    cloud_glow_strength: float = 0.0
     moon_glow: float = 0.0
     scene_from_j2000: tuple = field(default=())
 
@@ -211,6 +215,8 @@ def compute_view(p: SkyParams) -> SkyView:
     sky_amb = 0.25 * p.sky_strength * amb
     fog_amb = tuple(sky_amb * c + 0.10 * sun_lamp * sc + 0.4 * moon_lamp * m
                     for c, sc, m in zip((0.85, 0.92, 1.0), sun_color if sun_el > -2.0 else (0.0, 0.0, 0.0), moon_rgb))
+    cloud_ambient, cloud_top, cloud_glow, cloud_glow_strength = physics.cloud_scatter_lighting(
+        sun_el, sun_color, cloud_sun_color, cloud_sun, sky_amb, moon_lamp, moon_rgb)
 
     return SkyView(
         sun_vec=tuple(sun_vec), moon_vec=tuple(moon_vec), moon_light_vec=tuple(light_vec),
@@ -224,5 +230,7 @@ def compute_view(p: SkyParams) -> SkyView:
         celestial_euler=cel, galactic_euler=gal, star_brightness=star_gain, star_threshold=threshold,
         milky_way_strength=milky, night_glow=p.night_glow, sky_strength=p.sky_strength * SKY_SCALE,
         ground_strength=ground, deck_color=deck_color,
-        deck_sun_light=deck_sun, moon_glow=glow, fog_ambient=fog_amb, scene_from_j2000=st.scene_from_j2000,
+        deck_sun_light=deck_sun, moon_glow=glow, fog_ambient=fog_amb,
+        cloud_ambient=cloud_ambient, cloud_top=cloud_top, cloud_glow=cloud_glow,
+        cloud_glow_strength=cloud_glow_strength, scene_from_j2000=st.scene_from_j2000,
     )

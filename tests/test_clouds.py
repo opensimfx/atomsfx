@@ -64,6 +64,16 @@ def test_socket_values_content():
     assert C.socket_values(layer(edge_fade=5.0))["Inner Radius"] > 0
 
 
+def test_step_rate_scale_uses_the_thin_layers_only_when_they_are_alone():
+    cirrus = layer(thickness_m=900.0, density=0.003)
+    dense = layer(thickness_m=1400.0, density=0.02)
+    assert C.optical_depth(cirrus) == pytest.approx(1.35)
+    assert C.step_rate_scale([]) == 1.0
+    assert C.step_rate_scale([dense]) == 1.0
+    assert C.step_rate_scale([cirrus]) > 1.0                    # thin layer: coarser steps are safe
+    assert C.step_rate_scale([cirrus, dense]) == C.step_rate_scale([dense])   # the dense layer sets the rate
+
+
 def test_height_profile_shapes():
     f = C.height_profile
     assert f(0.0, 0.1, 0.4) == 0.0 and f(1.0, 0.1, 0.4) == 0.0

@@ -123,6 +123,35 @@ def socket_values(layer, quality: str = "PREVIEW") -> dict:
     }
 
 
+def optical_depth(layer, mean_fill: float = 0.5) -> float:
+    """Mean optical depth through a layer: ``density x thickness x fill``. A thin layer needs fewer samples."""
+    return max(layer.density, 0.0) * max(layer.thickness_m, 0.0) * mean_fill
+
+
+def step_rate_scale(layers, mean_fill: float = 0.5) -> float:
+    """Multiplier for the Cycles volume step rate, from the enabled layers' optical depths.
+
+    Cycles exposes one volume step rate for the whole scene, so a per-layer rate has to be collapsed into
+    one: the most demanding layer decides. Dense layers keep the quality tier's rate; if every layer is
+    optically thin (cirrus, thin altostratus) the step can be relaxed instead.
+    """
+    layers = list(layers)
+    if not layers:
+        return 1.0
+    scales = []
+    for layer in layers:
+        tau = optical_depth(layer, mean_fill)
+        if tau >= 8.0:
+            scales.append(1.0)
+        elif tau >= 3.0:
+            scales.append(1.1)
+        elif tau >= 1.0:
+            scales.append(1.35)
+        else:
+            scales.append(1.8)
+    return min(scales)
+
+
 def height_profile(h: float, bottom_ramp: float, top_ramp: float) -> float:
     """Reference implementation of the height profile the shader evaluates (h in 0..1)."""
     def ss(e0, e1, x):

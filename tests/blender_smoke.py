@@ -154,6 +154,30 @@ def cloud_sun_is_light_linked_to_the_cloud_domains():
 
 
 @check
+def cloud_materials_receive_the_multiscatter_lighting():
+    scene = fresh()
+    s = scene.atmosfx
+    state.write_preset(s, P.get("sunset_clouds"))
+    apply.create(scene)
+    view = apply.last_view[scene.name]
+    node = bpy.data.materials["AtmosFX Cloud 1"].node_tree.nodes["AtmosFX Group"]
+    assert {"Ambient", "Top Color", "Glow Color", "Sun Direction", "Glow Strength"} <= set(node.inputs.keys())
+    for name, want in (("Ambient", view.cloud_ambient), ("Top Color", view.cloud_top), ("Glow Color", view.cloud_glow)):
+        got = tuple(node.inputs[name].default_value)[:3]
+        assert all(abs(a - b) < 1e-6 for a, b in zip(got, want)), (name, got, want)
+    assert abs(node.inputs["Glow Strength"].default_value - view.cloud_glow_strength) < 1e-6
+    assert all(abs(a - b) < 1e-6 for a, b in zip(node.inputs["Sun Direction"].default_value, view.sun_vec))
+
+    state.write_preset(s, P.get("fair_weather_cumulus"))            # daytime: cool shadow, bright top, weak halo
+    apply.refresh(scene)
+    view = apply.last_view[scene.name]
+    assert max(view.cloud_ambient) < 0.05 and view.cloud_glow_strength < 0.5
+    node = bpy.data.materials["AtmosFX Cloud 1"].node_tree.nodes["AtmosFX Group"]
+    got = tuple(node.inputs["Ambient"].default_value)[:3]
+    assert all(abs(a - b) < 1e-6 for a, b in zip(got, view.cloud_ambient))
+
+
+@check
 def fog_modes_create_the_right_objects():
     scene = fresh()
     s = scene.atmosfx

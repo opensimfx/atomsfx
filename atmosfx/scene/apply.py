@@ -33,10 +33,11 @@ def apply_render_settings(scene, s) -> None:
     if not s.auto_render_settings:
         return
     step, pstep, steps, bounces, tile, samples, shadows = QUALITY[s.quality]
+    scale = cloudlib.step_rate_scale([l for l in s.clouds if l.enabled])
     cy = getattr(scene, "cycles", None)
     if cy is not None:
-        _try(cy, "volume_step_rate", step)
-        _try(cy, "volume_preview_step_rate", pstep)
+        _try(cy, "volume_step_rate", step * scale)
+        _try(cy, "volume_preview_step_rate", pstep * scale)
         _try(cy, "volume_max_steps", steps)
         _try(cy, "volume_bounces", bounces)
     ev = getattr(scene, "eevee", None)
@@ -105,7 +106,7 @@ def refresh(scene: bpy.types.Scene) -> SkyView | None:
         view = compute_view(params_from_settings(scene, s))
         world.update(scene, s, view, s.quality)
         objects.update_lamps(scene, s, view)
-        objects.update_cloud_layers(scene, s, s.quality)
+        objects.update_cloud_layers(scene, s, view, s.quality)
         objects.update_cloud_sun(scene, s, view)
         objects.update_fog(scene, s, view)
         apply_render_settings(scene, s)

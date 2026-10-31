@@ -7,6 +7,11 @@
 - Added four opt-in EEVEE render checks.
 - Added a CI matrix for 5.0.1 (Python 3.11) and 5.2.1 (Python 3.13, Blender wheel archive).
 - Excluded `.DS_Store`/`Thumbs.db` from the extension zip; documented the current verification status.
+- Cloud look-dev: density-weighted multiple-scatter fill (bright tops, dark blue bases at high sun, warm undersides
+  and a backlit forward-scatter halo at low sun), derived from the sun by `physics.cloud_scatter_lighting`.
+- The 2D cloud deck now warms at sunset instead of staying white-grey.
+- Volume step rate follows a per-layer optical-depth budget (`clouds.step_rate_scale`); thin high layers can use
+  coarser steps when no dense layer is present.
 
 ## 0.1.0 - first release
 
