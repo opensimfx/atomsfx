@@ -1,0 +1,22 @@
+schema_version = "1.0.0"
+
+id = "atmosfx"
+version = "0.1.0"
+name = "AtmosFX"
+tagline = "Physically based skies, stars, moon, clouds and fog"
+maintainer = "arsh342 <arsh342@users.noreply.github.com>"
+type = "add-on"
+
+website = "https://github.com/opensimfx/atmosfx"
+tags = ["Lighting", "Render", "Physics"]
+
+blender_version_min = "5.0.0"
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+copyright = [
+  "2026 opensimfx",
+]
+
+[permissions]
+files = "Read and write user atmosphere preset files"
