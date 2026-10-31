@@ -41,8 +41,7 @@ _Renders above: headless Cycles on one CPU core, 10-12 samples, OpenImageDenoise
 
 ## Install
 
-Requires Blender **5.0 or newer** (tested on 5.0.1; 5.2.1 is the intended target but has no `bpy` wheel yet,
-see below).
+Requires Blender **5.0 or newer** (verified on 5.0.1 and 5.2.1 LTS, see below).
 
 ```bash
 python tools/build_extension.py        # -> dist/atmosfx-0.1.0.zip
@@ -63,21 +62,21 @@ A scripted version is in [examples/quickstart.py](examples/quickstart.py). Full 
 
 ## Verification status (read this)
 
-Verified on **Blender 5.0.1 (`bpy` wheel)**:
+Verified on **Blender 5.0.1 and 5.2.1 LTS (`bpy` wheels), macOS arm64**:
 
 - 97 pure-Python unit tests: ephemeris against Meeus worked examples, photometry, star catalogue separations,
   cloud mapping, preset schema, derived sky values.
 - 22 headless Blender checks, 4 of them renders: stars land within 0.3 degrees of their computed positions (measured
   0.05-0.08), the sun disc within 0.1 degree, a rendered cloud slice fills the area the coverage setting promises,
-  haze keeps the sky visible. Cycles CPU was checked on Linux at 0.1 and on macOS arm64 during 0.2 development;
-  install-as-extension from the built zip registers and runs.
-- 4 opt-in EEVEE render checks on macOS arm64: clear sky, sunset clouds, dense fog and a star field all render
-  non-black, and the night sky contains bright star pixels. Volume quality is coarser than Cycles.
+  haze keeps the sky visible. The same 22 checks pass on 5.0.1 and 5.2.1; Cycles CPU was also checked on Linux at
+  0.1. Install-as-extension from the built zip registers and runs on both versions.
+- 4 opt-in EEVEE render checks: clear sky, sunset clouds, dense fog and a star field all render non-black on both
+  versions, and the night sky contains bright star pixels. Volume quality is coarser than Cycles.
 
 **Not verified** - treat as unknown:
 
-- Blender 5.2.1: PyPI has no `bpy` wheel newer than 5.0.1, so the intended target remains untested.
-- Windows; GPU Cycles; EEVEE on CI or a machine without a GPU/display (the EEVEE checks are opt-in for this reason).
+- Blender versions other than 5.0.1 and 5.2.1; Windows; GPU Cycles; EEVEE on CI or a machine without a GPU/display
+  (the EEVEE checks are opt-in for this reason).
 - The panels were never drawn in an interactive Blender session; only their operators and properties were exercised.
 - Cloud *appearance* is early look-dev: clouds render grey and dark-based next to the sky, sunset clouds are not
   golden. Cloud render cost is high (minutes per frame on one CPU core at 640x360).
@@ -105,7 +104,8 @@ examples/                scripts that build a scene from the command line
 
 ```bash
 python -m pytest                          # pure tests (numpy needed for the star baker tests)
-python tests/blender_smoke.py             # needs the bpy wheel (Python 3.11): 18 checks, ~20 s
+# bpy: Python 3.11 for 5.0.1; Python 3.13 for 5.2.1 (download.blender.org/pypi)
+python tests/blender_smoke.py             # needs bpy: 18 checks, ~20 s
 ATMOSFX_RENDER_TESTS=1 python tests/blender_smoke.py   # + 4 Cycles render checks, ~1 min
 ATMOSFX_EEVEE_TESTS=1 python tests/blender_smoke.py    # + 4 EEVEE render checks, needs a GPU/display
 python tools/gen_presets.py               # regenerate data/presets.json from the table in the tool

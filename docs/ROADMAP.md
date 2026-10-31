@@ -3,8 +3,6 @@
 Ordered by value for the effort, not by date.
 
 **Next (0.2)**
-- Verify on Blender 5.2.1 (blocked: PyPI has no `bpy` wheel newer than 5.0.1); EEVEE is verified on 5.0.1 with an
-  opt-in render check. Capture what differs on 5.2.1 once it can be installed.
 - Cloud look-dev: brighter tops and warmer lit edges (an explicit multiple-scatter approximation instead of raw
   bounces), a sunset/backlit cloud solution, cheaper step-size heuristics per layer.
 - Clouds at distance: an impostor ring or 2D deck blend so the 15 km domain edge never shows near the horizon.
