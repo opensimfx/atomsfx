@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+venv*/
+env/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+atmosfx-*-extension/
+atmosfx-*-extension.zip
+
+# Blender outputs and backups
+*.blend1
+examples/*.blend
+*.exr
+
+# OS and editor files
+.DS_Store
+._*
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

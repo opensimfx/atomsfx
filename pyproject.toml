@@ -1,0 +1,12 @@
+[project]
+name = "atmosfx"
+version = "0.1.0"
+description = "Physically based skies, stars, moon, clouds and fog for Blender"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
