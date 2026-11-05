@@ -7,7 +7,7 @@ tagline = "Physically based skies, stars, moon, clouds and fog"
 maintainer = "arsh342 <arsh342@users.noreply.github.com>"
 type = "add-on"
 
-website = "https://github.com/opensimfx/atmosfx"
+website = "https://github.com/opensimfx/atomsfx"
 tags = ["Lighting", "Render", "Physics"]
 
 blender_version_min = "5.0.0"
