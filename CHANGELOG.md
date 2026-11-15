@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - alpha (GitHub release 0.2.0-alpha.1)
 
+- Version bumped to 0.2.0 so the add-on matches its release (the first 0.2.0-alpha.1 zip still reported 0.1.0).
+- Fixed the manifest website URL (the repository is `atomsfx`).
 - Verified Blender 5.2.1 LTS and EEVEE headlessly on macOS arm64; the fast suite and all Cycles/EEVEE render checks
   pass on both 5.0.1 and 5.2.1.
 - Added four opt-in EEVEE render checks.
