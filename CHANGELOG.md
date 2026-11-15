@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- UI follows the shared OpenSimFX conventions (`docs/UI_STYLE.md`, identical in all four add-ons):
+  Blender's label-left property layout in every panel, a large *Add* button, *Remove* separated
+  at the bottom, and *Live update* / *Set render* on separate rows (the shared row clipped).
+
 ## 0.2.0 - alpha (GitHub release 0.2.0-alpha.1)
 
 - Version bumped to 0.2.0 so the add-on matches its release (the first 0.2.0-alpha.1 zip still reported 0.1.0).

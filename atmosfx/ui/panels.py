@@ -13,6 +13,13 @@ def _settings(context):
     return context.scene.atmosfx
 
 
+def _split(layout):
+    # Shared OpenSimFX UI conventions (docs/UI_STYLE.md, identical in every OpenSimFX add-on): labels on the left.
+    layout.use_property_split = True
+    layout.use_property_decorate = False
+    return layout
+
+
 class _Base:
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -41,19 +48,20 @@ class ATMOSFX_PT_main(_Base, bpy.types.Panel):
 
     def draw(self, context):
         s = _settings(context)
-        lay = self.layout
-        lay.prop(s, "preset", text="")
+        lay = _split(self.layout)
+        lay.prop(s, "preset")
         if not s.created:
-            lay.operator("atmosfx.add", icon="WORLD")
+            col = lay.column()
+            col.scale_y = 1.4
+            col.operator("atmosfx.add", icon="WORLD")
             lay.label(text="Creates a sky, sun, moon, stars, clouds and fog.", icon="INFO")
             return
         row = lay.row(align=True)
         row.operator("atmosfx.apply_preset", text="Load preset", icon="IMPORT")
         row.operator("atmosfx.refresh", text="", icon="FILE_REFRESH")
         lay.prop(s, "quality")
-        row = lay.row()
-        row.prop(s, "live", toggle=True, icon="PLAY")
-        row.prop(s, "auto_render_settings", text="Set render")
+        lay.prop(s, "live", toggle=True, icon="PLAY")
+        lay.prop(s, "auto_render_settings", text="Set render")
         cam = context.scene.camera
         need = apply.required_clip_end(s)
         if cam is not None and cam.type == "CAMERA" and cam.data.clip_end < need:
@@ -62,6 +70,7 @@ class ATMOSFX_PT_main(_Base, bpy.types.Panel):
             box.label(text=f"Camera clip end {cam.data.clip_end:,.0f} m cuts off", icon="ERROR")
             box.label(text=f"clouds/haze (need {need:,.0f} m).")
             box.operator("atmosfx.fix_camera_clip", icon="CAMERA_DATA")
+        lay.separator()
         lay.operator("atmosfx.remove", icon="TRASH")
 
 
@@ -70,7 +79,7 @@ class ATMOSFX_PT_time(_Sub, bpy.types.Panel):
     bl_idname = "ATMOSFX_PT_time"
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         lay.prop(s, "time_mode", expand=True)
         if s.time_mode == "ARTISTIC":
             _col(lay, s, ("sun_elevation", "sun_azimuth"))
@@ -94,7 +103,7 @@ class ATMOSFX_PT_sky(_Sub, bpy.types.Panel):
     bl_idname = "ATMOSFX_PT_sky"
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         _col(lay, s, ("air_density", "aerosol_density", "ozone_density", "sky_altitude", "sky_strength", "night_glow"))
         lay.separator()
         lay.prop(s, "use_sun_lamp")
@@ -113,7 +122,7 @@ class ATMOSFX_PT_moon(_Sub, bpy.types.Panel):
         self.layout.prop(_settings(context), "moon_enabled", text="")
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         lay.active = s.moon_enabled
         if s.time_mode == "ARTISTIC":
             _col(lay, s, ("moon_phase", "moon_elevation", "moon_azimuth"))
@@ -130,7 +139,7 @@ class ATMOSFX_PT_stars(_Sub, bpy.types.Panel):
         self.layout.prop(_settings(context), "stars_enabled", text="")
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         lay.active = s.stars_enabled
         _col(lay, s, ("star_brightness", "magnitude_limit", "milky_way", "star_density", "star_seed", "star_resolution"))
 
@@ -148,7 +157,7 @@ class ATMOSFX_PT_clouds(_Sub, bpy.types.Panel):
     bl_idname = "ATMOSFX_PT_clouds"
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         row = lay.row()
         row.template_list("ATMOSFX_UL_clouds", "", s, "clouds", s, "active_cloud", rows=3)
         col = row.column(align=True)
@@ -177,7 +186,7 @@ class ATMOSFX_PT_deck(_Sub, bpy.types.Panel):
         self.layout.prop(_settings(context), "deck_enabled", text="")
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         lay.active = s.deck_enabled
         _col(lay, s, ("deck_coverage", "deck_altitude", "deck_scale", "deck_opacity", "deck_softness",
                       "deck_fibre", "deck_wind_speed", "deck_wind_dir", "deck_seed"))
@@ -191,7 +200,7 @@ class ATMOSFX_PT_fog(_Sub, bpy.types.Panel):
         self.layout.prop(_settings(context), "fog_enabled", text="")
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         lay.active = s.fog_enabled
         lay.prop(s, "fog_mode", expand=True)
         if s.fog_mode in ("WORLD", "BOTH"):
@@ -209,7 +218,7 @@ class ATMOSFX_PT_info(_Sub, bpy.types.Panel):
     bl_idname = "ATMOSFX_PT_info"
 
     def draw(self, context):
-        s, lay = _settings(context), self.layout
+        s, lay = _settings(context), _split(self.layout)
         v = apply.last_view.get(context.scene.name)
         if v is None:
             lay.label(text="No data yet")
