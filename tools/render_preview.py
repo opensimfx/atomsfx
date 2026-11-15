@@ -1,6 +1,6 @@
 """Render preset previews headless (Cycles, CPU). Needs the ``bpy`` wheel (Python 3.11/3.13, Blender 5.0.1/5.2.1).
 
-    python tools/render_preview.py clear_noon golden_hour --out docs/img --width 640 --samples 32
+    python tools/render_preview.py clear_noon golden_hour --out docs/img --width 960 --samples 32
     python tools/render_preview.py --all --out docs/img
 
 The scene is a flat ground plane with a few stand-in objects so fog and aerial perspective have something to
@@ -87,7 +87,7 @@ def main() -> int:
     ap.add_argument("presets", nargs="*")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--out", default=os.path.join(ROOT, "docs", "img"))
-    ap.add_argument("--width", type=int, default=640)
+    ap.add_argument("--width", type=int, default=960)
     ap.add_argument("--samples", type=int, default=32)
     ap.add_argument("--azimuth", type=float, default=None)
     ap.add_argument("--pitch", type=float, default=12.0)

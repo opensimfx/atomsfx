@@ -1,33 +1,22 @@
-# AtmosFX
+<h1><img src=".github/logo.png" alt="AtmosFX logo" width="64" height="64" align="absmiddle">&nbsp;AtmosFX</h1>
 
-**Physically based skies, stars, moon, clouds and fog for Blender** - part of [OpenSimFX](https://github.com/opensimfx),
+**Physically based skies, stars, moon, clouds and fog for Blender** — part of [OpenSimFX](https://github.com/opensimfx),
 alongside BlastFX, RainFX and FlowFX.
 
 ![Golden hour](docs/img/golden_hour.png)
+
+| | |
+|---|---|
+| ![Starry night](docs/img/starry_night.png) | ![Sunset clouds](docs/img/sunset_clouds.png) |
+
+_Renders: headless Cycles on one CPU core, 12 samples, OpenImageDenoise, ACES preview tone-map
+(`tools/render_preview.py`). They are look-dev checks, not showpieces._
 
 AtmosFX builds a complete atmosphere in one click: a Nishita sky driven by a real sun position, a star field with
 recognisable constellations, a Milky Way, a moon with correct phase and lit limb, volumetric cloud layers, a cheap 2D
 cirrus deck, and fog or haze whose density comes from a meteorological visibility. The sun, moon and stars follow a
 real **place, date and time** (or you place them by hand), and every number the add-on computes is derived from
 documented physics you can read in [docs/PHYSICS.md](docs/PHYSICS.md).
-
-| | |
-|---|---|
-| ![Starry night](docs/img/starry_night.png) | ![Milky Way](docs/img/milky_way.png) |
-| ![Sunset clouds](docs/img/sunset_clouds.png) | ![Dense fog](docs/img/dense_fog.png) |
-
-### More environments
-
-| | | |
-|---|---|---|
-| ![Clear noon](docs/img/clear_noon.png) | ![Fair-weather cumulus](docs/img/fair_weather_cumulus.png) | ![Billowing cumulus](docs/img/cumulus_day.png) |
-| ![Mackerel sky](docs/img/mackerel_sky.png) | ![Stratocumulus deck](docs/img/stratocumulus_sky.png) | ![Overcast stratus](docs/img/overcast_stratus.png) |
-| ![Volumetric cirrus sunset](docs/img/volumetric_cirrus_sunset.png) | ![Sunrise over mist](docs/img/sunrise_mist.png) | ![Morning mist](docs/img/morning_mist.png) |
-| ![High altitude](docs/img/high_altitude.png) | ![Arctic clarity](docs/img/arctic_clear.png) | ![Storm front](docs/img/storm_cumulonimbus.png) |
-| ![Valley fog](docs/img/valley_fog.png) | ![City smog](docs/img/city_smog.png) | ![Desert dust](docs/img/desert_dust.png) |
-
-_Renders: headless Cycles on one CPU core, 12 samples, OpenImageDenoise, ACES preview tone-map
-(`tools/render_preview.py`). They are look-dev checks, not showpieces._
 
 ## Features
 
@@ -107,7 +96,7 @@ atmosfx/                 the add-on (this folder is what the extension zip conta
   scene/                 world, lamps, domain objects, render settings, orchestration
   ui/                    properties, operators, panels, preset conversion
   data/presets.json      the shipped preset library (generated)
-docs/                    system design, physics, user guide, presets, roadmap, references, testing
+docs/                    user guide, presets, physics, system design, development, validation, references, roadmap, UI style
 tests/                   pytest suites + headless Blender checks
 tools/                   build_extension, gen_presets, gen_preset_docs, render_preview
 examples/                scripts that build a scene from the command line
@@ -122,16 +111,18 @@ python tests/blender_smoke.py             # needs bpy: 19 checks, ~20 s
 ATMOSFX_RENDER_TESTS=1 python tests/blender_smoke.py   # + 4 Cycles render checks, ~1 min
 ATMOSFX_EEVEE_TESTS=1 python tests/blender_smoke.py    # + 4 EEVEE render checks, needs a GPU/display
 python tools/gen_presets.py               # regenerate data/presets.json from the table in the tool
-python tools/render_preview.py golden_hour --out docs/img --width 640 --samples 12   # README gallery
+python tools/render_preview.py golden_hour --out docs/img --samples 12   # README renders (960 x 540)
+python tools/build_extension.py           # dist/atmosfx-<version>.zip
 ```
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation
 
-[System design](docs/SYSTEM_DESIGN.md) - [Physics](docs/PHYSICS.md) - [User guide](docs/USER_GUIDE.md) -
-[Presets](docs/PRESETS.md) - [Testing](docs/TESTING.md) - [Roadmap](docs/ROADMAP.md) -
-[References and licensing](docs/REFERENCES.md) - [Changelog](CHANGELOG.md)
+[User guide](docs/USER_GUIDE.md) · [Presets](docs/PRESETS.md) · [Physics](docs/PHYSICS.md) ·
+[System design](docs/SYSTEM_DESIGN.md) · [Development](docs/DEVELOPMENT.md) · [Validation](docs/VALIDATION.md) ·
+[References](docs/REFERENCES.md) · [Roadmap](docs/ROADMAP.md) · [UI style](docs/UI_STYLE.md) · [Changelog](CHANGELOG.md)
 
 ## License
 
-GPL-3.0-or-later. AtmosFX contains no code, shaders, textures or data from the commercial products that informed its
-feature list; see [docs/REFERENCES.md](docs/REFERENCES.md).
+GPL-3.0-or-later — see [LICENSE](LICENSE). AtmosFX is original work; see [docs/REFERENCES.md](docs/REFERENCES.md).

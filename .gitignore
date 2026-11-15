@@ -1,36 +1,38 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-
-# Virtual environments
+.mypy_cache/
 .venv/
-venv/
 venv*/
-env/
 
-# Build and packaging artifacts
-build/
-dist/
-*.egg-info/
-atmosfx-*-extension/
-atmosfx-*-extension.zip
-
-# Blender outputs and backups
-*.blend1
-examples/*.blend
-*.exr
-
-# OS and editor files
+# OS and editors
 .DS_Store
 ._*
+.idea/
+.vscode/
+
+# Blender backups
+*.blend1
+*.blend2
+
+# Build output (release zips go on GitHub Releases)
+dist/
+
+# AtmosFX build leftovers and render output
+build/
+*.egg-info/
+.coverage
+htmlcov/
+atmosfx-*-extension/
+atmosfx-*-extension.zip
+examples/*.blend
+*.exr
 Thumbs.db
 *.swp
 *.swo
-.idea/
-.vscode/
+env/
+
+# Local notes that are never published (research material, competitor analysis, dev leftovers)
+private/

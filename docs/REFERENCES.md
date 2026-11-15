@@ -1,4 +1,4 @@
-# References, research and licensing
+# References and Licensing
 
 ## 1. Licensing
 

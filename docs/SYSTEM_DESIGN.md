@@ -1,4 +1,4 @@
-# System design
+# System Design
 
 ## 1. Principles
 
