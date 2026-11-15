@@ -1,6 +1,6 @@
 [project]
 name = "atmosfx"
-version = "0.2.0"
+version = "0.3.0"
 description = "Physically based skies, stars, moon, clouds and fog for Blender"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }

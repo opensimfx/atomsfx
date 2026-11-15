@@ -44,7 +44,7 @@ documented physics you can read in [docs/PHYSICS.md](docs/PHYSICS.md).
 Requires Blender **5.0 or newer** (verified on 5.0.1 and 5.2.1 LTS, see below).
 
 ```bash
-python tools/build_extension.py        # -> dist/atmosfx-0.2.0.zip
+python tools/build_extension.py        # -> dist/atmosfx-0.3.0.zip
 ```
 
 In Blender: *Edit > Preferences > Get Extensions > (v) > Install from Disk...*, pick the zip. The panel appears in

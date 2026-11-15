@@ -2,12 +2,15 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.3.0 - alpha (GitHub release v0.3.0-alpha.1, 2026-11-16)
+
 - The README shows three 960 x 540 renders like the other OpenSimFX add-ons (golden hour, starry night, sunset
   clouds; `tools/render_preview.py` now defaults to 960 px wide);
   the other 17 gallery renders are kept locally, not in the repository.
-- Notes about the third-party add-ons that informed the feature list moved out of `docs/REFERENCES.md` into a
-  local, ignored `private/` folder; the published references keep the licensing statement and the scientific
-  sources.
+- `docs/REFERENCES.md` keeps the licensing statement and the scientific sources; working research notes are no
+  longer published.
 - Repository layout shared by the four OpenSimFX add-ons (CONTRIBUTING.md, Repository conventions):
   `docs/TESTING.md` is now `docs/DEVELOPMENT.md` (suites, adding a test) and the new `docs/VALIDATION.md` (what
   the checks guarantee, measurements, what is not covered), so every add-on has the same nine docs; the README
