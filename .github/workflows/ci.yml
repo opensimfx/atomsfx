@@ -7,17 +7,27 @@ on:
 
 jobs:
   test:
-    name: Blender ${{ matrix.bpy }}
-    runs-on: ubuntu-latest
+    name: Blender ${{ matrix.bpy }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
         include:
-          - python: "3.11"
-            bpy: "5.0.1"
-            extra_index: ""
-          - python: "3.13"
-            bpy: "5.2.1"
+          # AtmosFX supports Blender 5.2 LTS; Blender publishes the bpy wheel for all three systems
+          - os: ubuntu-latest
+            python: "3.13"
+            bpy: "5.2.4"
+            extra_index: "https://download.blender.org/pypi/"
+          - os: windows-latest
+            python: "3.13"
+            bpy: "5.2.4"
+            extra_index: "https://download.blender.org/pypi/"
+          - os: macos-latest
+            python: "3.13"
+            bpy: "5.2.4"
             extra_index: "https://download.blender.org/pypi/"
     steps:
       - uses: actions/checkout@v4
@@ -46,18 +56,18 @@ jobs:
         run: python tests/blender_smoke.py
 
       - name: Generated presets and docs are current
-        if: matrix.bpy == '5.0.1'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           python tools/gen_presets.py
           python tools/gen_preset_docs.py
           git diff --exit-code
 
       - name: Build extension zip
-        if: matrix.bpy == '5.0.1'
+        if: matrix.os == 'ubuntu-latest'
         run: python tools/build_extension.py
 
       - uses: actions/upload-artifact@v4
-        if: matrix.bpy == '5.0.1'
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: atmosfx-extension
           path: dist/*.zip

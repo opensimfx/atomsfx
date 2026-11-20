@@ -39,7 +39,7 @@ quantile mapping (coverage 0.3 gave 5 % fill and 0.7 gave 91 % before).
 
 ## Not covered
 
-Blender versions other than 5.0.1/5.2.1; GPU Cycles; Windows; EEVEE in CI or on GPU-less machines (opt-in);
+Blender versions other than 5.2 LTS; GPU Cycles; Windows; EEVEE in CI or on GPU-less machines (opt-in);
 EEVEE image quality beyond non-black output (no reference-image comparison); interactive UI drawing; render-farm
 animation without the add-on; the visual quality of clouds (judged by eye only); long-running memory use; stereo and
 panoramic cameras (the sky is direction-based so should work, untested); scene unit scales other than metres (all

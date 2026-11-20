@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Nothing yet.
+- The extension zip now contains the GPL-3.0 `LICENSE`.
+- Requires Blender 5.2 LTS (was 5.0); CI runs the test suites on the 5.2 wheel on Linux, Windows and macOS.
 
 ## 0.3.0 - alpha (GitHub release v0.3.0-alpha.1, 2026-11-16)
 

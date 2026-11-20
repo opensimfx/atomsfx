@@ -81,6 +81,7 @@ def main() -> int:
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for p in files:
             z.write(p, os.path.relpath(p, PKG).replace(os.sep, "/"))
+        z.write(os.path.join(ROOT, "LICENSE"), "LICENSE")   # the GPL-3.0 text ships in the package
     size = os.path.getsize(out)
     print(f"built {os.path.relpath(out, ROOT)}  ({len(files)} files, {size / 1024:.0f} KiB)")
     return 0
