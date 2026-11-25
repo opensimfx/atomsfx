@@ -1,7 +1,7 @@
 # Development and Testing
 
 Set up, run and extend the test suites. Build the extension with `python tools/build_extension.py`
-(`dist/atmosfx-<version>.zip`); see also [CONTRIBUTING.md](../CONTRIBUTING.md).
+(`dist/atmosfx-<version>.zip`).
 
 ## Suites
 

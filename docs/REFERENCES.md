@@ -4,7 +4,7 @@
 
 AtmosFX is GPL-3.0-or-later and original work. Its node groups, star baker, star catalogue, noise formulations and
 presets were written for this project; it contains no code, shaders, node groups, textures, images or data from
-other add-ons. Contributions must keep it that way (see CONTRIBUTING.md).
+other add-ons. New material must keep it that way.
 
 ## 2. Algorithm and data sources (published formulae, implemented from the papers/books)
 
