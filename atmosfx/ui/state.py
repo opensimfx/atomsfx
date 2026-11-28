@@ -37,7 +37,8 @@ MAP = [
     ("fog", "domain_radius_m", "fog_domain_radius"), ("fog", "domain_height_m", "fog_domain_height"),
 ]
 LAYER_FIELDS = ("enabled", "kind", "altitude_m", "thickness_m", "coverage", "density", "scale_m", "detail",
-                "anisotropy", "wind_speed_ms", "wind_dir_deg", "seed", "radius_m", "edge_fade")
+                "anisotropy", "wind_speed_ms", "wind_dir_deg", "seed", "radius_m", "edge_fade", "cell",
+                "cell_bearing_deg", "cell_distance_m", "cell_radius_m")
 
 
 def _write(s, prop: str, value) -> None:

@@ -62,6 +62,11 @@ class ATMOSFX_PT_main(_Base, bpy.types.Panel):
         lay.prop(s, "quality")
         lay.prop(s, "live", toggle=True, icon="PLAY")
         lay.prop(s, "auto_render_settings", text="Set render")
+        row = lay.row(align=True)
+        row.prop(s, "auto_exposure", text="Auto exposure")
+        sub = row.row(align=True)
+        sub.active = s.auto_exposure
+        sub.prop(s, "exposure_bias", text="Bias")
         cam = context.scene.camera
         need = apply.required_clip_end(s)
         if cam is not None and cam.type == "CAMERA" and cam.data.clip_end < need:
@@ -112,6 +117,11 @@ class ATMOSFX_PT_sky(_Sub, bpy.types.Panel):
         lay.prop(s, "ground_enabled")
         if s.ground_enabled:
             _col(lay, s, ("ground_color", "ground_blend"))
+        lay.separator()
+        lay.label(text="Art Direction")
+        _col(lay, s, ("halo_strength", "halo_size_deg", "horizon_offset_deg"))
+        _col(lay, s, ("sky_tint", "horizon_tint"))
+        lay.prop(s, "eclipse", slider=True)
 
 
 class ATMOSFX_PT_moon(_Sub, bpy.types.Panel):
@@ -173,6 +183,18 @@ class ATMOSFX_PT_clouds(_Sub, bpy.types.Panel):
             for n in ("wind_speed_ms", "wind_dir_deg", "seed", "radius_m", "edge_fade"):
                 col.prop(layer, n)
             lay.prop(layer, "follow_camera")
+            col = lay.column(align=True)
+            col.prop(layer, "cell")
+            sub = col.column(align=True)
+            sub.active = layer.cell > 0.0
+            for n in ("cell_bearing_deg", "cell_distance_m", "cell_radius_m"):
+                sub.prop(layer, n)
+            col = lay.column(align=True)
+            col.prop(layer, "evolution")
+            col.prop(layer, "lightning")
+            sub = col.column(align=True)
+            sub.active = layer.lightning > 0.0
+            sub.prop(layer, "lightning_brightness")
             cost = cloudlib.estimate_domain_cost(layer, s.quality)
             lay.label(text=f"Relative cost: {cost:.1f}", icon="TIME")
 

@@ -37,10 +37,33 @@ blank if its colour space is changed after the pixels are set; Blender 5.0's sky
 3.0-strength sun; dense fog path-traces black without ambient emission; filled area vs coverage before and after the
 quantile mapping (coverage 0.3 gave 5 % fill and 0.7 gave 91 % before).
 
+## The look bench (1.0)
+
+`tools/render_look.py` renders every preset in desktop Blender (5.2.3, Metal GPU, AgX as a user sees it) over a
+ring of hills from 1 to 20 km, with the camera at eye height and the horizon in frame (a low sun near the frame
+edge, a high sun behind the camera, the moon or south at night, a fog bank seen from a hillside), and writes a
+contact sheet. Every look change toward 1.0 was judged on these sheets. Findings that changed the design (details
+in SYSTEM_DESIGN 5 and 6):
+
+- the haze emission fill turned a 35 km-visibility day into a milky whiteout: it now applies only to optically thick
+  fog (`objects.fog_fill`);
+- clouds at the old 0.02 /m rendered grey on their sunlit side even at 128 volume bounces; physical densities
+  (0.05 /m) plus the Mie/soft-lobe blend render bright cumulus with shaded bases;
+- an emitting cloud deck lit the ground orange at sunset (emission adds energy in proportion to optical depth);
+- a cloud layer inside the haze dome lost its light-linked sun; the dome now ends under the cloud base;
+- coincident volume faces streaked (and cost 3x the render time);
+- a Light Path node in the cloud shader made Metal >20x slower; the fog shader is unaffected;
+- night and twilight rendered black at exposure 0: auto exposure, with the sky's irradiance measured on a white
+  plane (`skyview.SKY_IRRADIANCE`) and the on-screen key tuned per scene (`physics.CINEMATIC_KEY`);
+- overcast needs 32+ volume bounces to light the underside of the deck (12 rendered a storm-dark sky).
+
+The bench is a judgement aid, not a test: no image is compared automatically.
+
 ## Not covered
 
-Blender versions other than 5.2 LTS; GPU Cycles; Windows; EEVEE in CI or on GPU-less machines (opt-in);
+Blender versions other than 5.2 LTS (5.2.1 wheel, 5.2.3 desktop for the look bench); GPU Cycles in CI (the look bench runs on
+Metal locally); Windows; EEVEE in CI or on GPU-less machines (opt-in);
 EEVEE image quality beyond non-black output (no reference-image comparison); interactive UI drawing; render-farm
-animation without the add-on; the visual quality of clouds (judged by eye only); long-running memory use; stereo and
+animation without the add-on; the visual quality of the presets (judged by eye on the look bench, not compared automatically); long-running memory use; stereo and
 panoramic cameras (the sky is direction-based so should work, untested); scene unit scales other than metres (all
 lengths are Blender units = metres).

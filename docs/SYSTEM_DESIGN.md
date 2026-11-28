@@ -64,7 +64,7 @@ Inputs are listed in `nodes/sky.py: INPUTS`; composited in this order:
 | 3 | Stars | `Environment Texture` of the baked J2000 float image, vector rotated by a **Mapping** node whose Euler comes from the ephemeris; hidden below a luminance threshold (the limiting magnitude); faded near the horizon |
 | 4 | Milky Way | second Mapping into galactic coordinates; Gaussian band in latitude, bulge in longitude, two noises for lanes and clumps |
 | 5 | Moon | disc by angular distance; surface normal reconstructed on a unit sphere; Lambert term with the **true Sun direction**, so phase and bright limb are correct; procedural maria; earthshine floor |
-| 5b | Moon glow | halo plus faint overall lift, tinted like moonlight |
+| 5b | Moon glow | aureole (half moonlight, half sky blue) plus an overall lift in the day sky's Rayleigh blue |
 | 6 | Sun | disc radiance = lamp strength / solid angle, limb darkening 0.45 |
 | 7 | 2D cloud deck | ray/plane intersection at the deck altitude, stretched noise (fibre), wind by a time node, lit by ambient + a forward-scatter lobe toward the sun |
 | 8 | Ground | below the horizon, soft blend |
@@ -75,17 +75,23 @@ double-lights it.
 ### 4.2 `AtmosFX Cloud` (volume)
 
 World-space position, so objects can be moved and scaled freely. Density =
-`smoothstep(field, threshold, threshold + softness) * Density * radial_fade` where
-`field = fbm(p * frequency, octaves) + anvil - 0.32 (1 - profile) - detail_erosion`.
-`profile` is the height profile of the kind (flat base, rounded top). Two Henyey-Greenstein lobes (forward `g`,
-back -0.25 at 25 %) approximate cloud phase, plus an **ambient/top emission and a forward-scatter halo** for the
-multiple scattering a bounded path tracer cannot build up (section 5.4). Outputs `Volume`, plus `Density`, `Field`
-and `Base Noise` for diagnostics (the coverage test renders the `Density` output).
+`smoothstep(field, threshold, threshold + softness) * Density * radial_fade`, with
+
+`field = mix(perlin, 0.55 worley + 0.12, billow) + anvil + weather + cell - 0.32 (1 - profile) - 0.18 roundness h^2 - erosion`
+
+where `perlin` is fractal noise, `worley` inverted fractal Voronoi F1 (rounded lumps), `weather` a 2D field with
+cells ~3x the cloud size, `cell` the optional storm cell, `profile` the kind's height ramps (sharp flat base) and
+`erosion` high-frequency Worley, inverted toward the base (wisps) and billowy toward the top. The noise frame is
+turned to the layer's wind and stretched downwind by the kind's `Fibre`. Scattering blends the
+Mie phase of the droplets with a soft Henyey-Greenstein lobe (water) or uses Henyey-Greenstein (ice); an emission
+fill exists for the Draft tier only (section 5.4). Outputs `Volume`, plus `Density`, `Field` and `Base Noise` for
+diagnostics (the coverage calibration renders `Field`, the coverage test renders `Density`).
 
 ### 4.3 `AtmosFX Fog` (volume)
 
-`density = sigma0 * exp(-max(z - base, 0) / H) * patchiness * edge_fade`; scatter + absorption + an **ambient
-in-scatter emission** proportional to density (section 5.3).
+Aerosol: `density = sigma0 * exp(-max(z - base, 0) / H) * patchiness * edge_fade`, scatter + absorption. Clean air
+(dome only): Rayleigh-phase scatter, blue-weighted per channel, 8 km scale height. Plus an ambient in-scatter
+emission for optically thick fog, seen by camera rays only (section 5.3).
 
 ## 5. Decisions that are not obvious
 
@@ -93,48 +99,63 @@ in-scatter emission** proportional to density (section 5.3).
 
 An infinite world volume in Cycles makes every ray that leaves the scene travel an infinite distance: the medium
 swallows it and the **whole frame renders black** (reproduced with a single Volume Scatter and any density from
-6.5e-5 to 1e-3, with sampling, step size and bounce settings varied). So "world" fog is `AtmosFX Haze`, a cylinder of
-radius `1.4 x visibility` (transmittance there is 0.3 %, so the edge is invisible) and height `5 x scale height`
-that follows the camera in X/Y. A fog bank is the same object type with its own size and visibility.
-Cost: a bounded heterogeneous volume, still the most expensive thing in a scene; see the user guide.
+6.5e-5 to 1e-3, with sampling, step size and bounce settings varied). So "world" fog is `AtmosFX Haze`, a cylinder
+that follows the camera in X/Y: radius `max(1.4 x visibility, 40 km)` (transmittance at 1.4 V is 0.3 %, so the edge
+is invisible; 40 km so the clean air reaches distant ridges), height `max(5 x scale height, 4 km)`, ending 25 m under
+the lowest cloud base (section 5.2). A fog bank is the same object type with its own size and visibility, and no air.
 
-### 5.2 Clouds get their own sun (light linking)
+### 5.2 Clouds get their own sun (light linking), unless volumes overlap
 
 The sunlight that reaches a cloud at 4 km crossed far less air than the light at the ground. One lamp cannot be
 right for both, so `AtmosFX Sun` is light-linked to **exclude** the cloud domains and `AtmosFX Sun Clouds`,
 attenuated at the mean mid-height of the layers, is linked to **include only** them. Cloud domains still block the
-ground sun (shadow linking is untouched), so cloud shadows on the ground are correct. Verified: light linking
-restricts a Sun lamp's effect on a volume object in Cycles (test lamp lit the volume only when linked to it). The
-EEVEE render path is checked for liveness, but the light-linking restriction itself is not separately measured there.
+ground sun (shadow linking is untouched), so cloud shadows on the ground are correct.
 
-### 5.3 Fog emits its ambient light
+Cycles light linking does **not** separate overlapping volumes. Measured on Blender 5.2.3: a cumulus layer inside
+the haze dome lost the cloud sun and rendered grey on its sunlit side; with the dome capped below the cloud base the
+same layer rendered bright white. So the dome ends 25 m under the lowest cloud base (haze is the boundary layer,
+which cumulus bases cap; the gap also keeps faces from coinciding, see 5.10), and when a fog bank or a very low base
+makes an overlap unavoidable, the split is dropped and one sun lights everything (`objects.haze_overlaps_clouds`).
 
-In thick fog the light a droplet receives is mostly multiply scattered. With the handful of volume bounces a render
-can afford, a dense fog path-traces to black (measured: the "dense fog" preset rendered 0.000 everywhere). The fog
-shaders add an Emission term `density * ambient`, where `ambient` is the diffuse sky light plus a share of the sun's
-forward scatter (`skyview.fog_ambient`). Physically this is the equilibrium radiance of a scattering medium.
-It slightly double counts single scattering; that is accepted.
+### 5.3 Fog emits ambient light only where it is thick, and only for the camera
 
-### 5.4 Clouds emit their multiple scattering
+In thick fog the light a droplet receives is mostly multiply scattered; with the volume bounces a render can afford,
+a dense fog path-traces too dark. The fog shader adds `density * ambient * Fill`, with `ambient` the diffuse sky
+light plus a share of the sun's forward scatter (`skyview.fog_ambient`). The gain `Fill` is the tier's share
+(Draft 1, Preview 0.5, Final 0.3) times `smoothstep(1, 8, sigma0 H)` of the vertical optical depth: light escapes a
+layer through its thinnest dimension, so haze (a clear day is ~0.15) gets none and dense fog (~15) the full term.
+Before this, a 35 km-visibility haze rendered as a milky whiteout. The emission is gated by *Light Path > Is Camera
+Ray*: it brightens what is seen without lighting the scene (see 5.4 for why that matters).
 
-Like fog, a cloud is mostly multiply scattered light, and a path tracer with a handful of volume bounces renders
-thick layers too dark and too grey. The cloud shader therefore adds an emission proportional to local density:
+### 5.4 Cloud light comes from real bounces
 
-`ambient -> top` mixed by `smoothstep(height, 0.35, 0.9)`, plus a forward-scatter halo
-`density * Glow Strength * max(dot(-Incoming, Sun), 0)^8`.
-
-`physics.cloud_scatter_lighting` derives the colours from the same inputs as the lamps: a cool blue base while the
-sun is high (shadowed underside), a warm base once the sun is low (the beam comes from below), a bright top scaled
-by the cloud-height sun strength, and a halo that grows as the beam reddens. Anchors were tuned against Cycles
-renders of `sunset_clouds` and `fair_weather_cumulus`. This is display calibration, not radiative transfer: it
-double counts a little single scattering, which is accepted for the same reason as the fog term.
+A cloud is mostly multiply scattered light. Earlier versions emitted a display-calibrated fill in proportion to
+density. That is wrong in a medium that absorbs nothing and scatters forward: every emitted photon escapes, so the
+emission adds energy in proportion to optical depth (measured: an altocumulus deck at sunset lit the ground orange,
+as bright as the sky). Gating the fill to camera rays fixed that, but any Light Path node in the cloud shader made
+Metal render it more than 20x slower (Blender 5.2.3; a 480 px frame did not finish in 20 minutes; the same node in
+the fog shader is harmless), presumably because a path-dependent shader defeats the majorant grid that makes
+null-scattering volumes fast. So Preview and Final use **no fill**: the phase blend (section 4.2, PHYSICS 8) lets
+light diffuse out in tens of bounces, and the tiers bounce 32 and 96 times (bounces are cheap: most paths leave the
+cloud early). Draft (8 bounces, viewport) keeps a 0.6 fill of `physics.cloud_scatter_lighting`.
 
 ### 5.5 Cloud coverage means filled area
 
-The shape field is approximately normal (mean 0.50, sd 0.08 for normalised fractal noise, measured by rendering a
-density slice). `coverage_threshold(c) = 0.5 - 0.08 * probit(c)` makes the filled fraction equal `c`. Measured
-filled fractions for coverage 0.1 / 0.25 / 0.4 / 0.6 / 0.8 were 0.09 / 0.23 / 0.37 / 0.57 / 0.77. The render test
-repeats this and requires agreement within 0.12.
+The shape field at mid-height is close to normal. Each kind's mean and standard deviation were measured by
+rendering the shader's `Field` output on an orthographic slice of 25 x 25 cloud cells (Blender 5.2.3, Final
+octaves); q10 and q90 fall within 0.002 of the normal quantiles. `coverage_threshold(c, mean, sd) = mean - sd *
+probit(c)` then makes the filled fraction equal `c`. The render test repeats the check and requires agreement
+within 0.12.
+
+| Kind | mean | sd | edge (sd) |
+|---|---|---|---|
+| Cumulus | 0.432 | 0.067 | 0.12 |
+| Stratocumulus | 0.480 | 0.060 | 0.25 |
+| Stratus | 0.495 | 0.066 | 0.8 |
+| Altocumulus | 0.484 | 0.055 | 0.2 |
+| Altostratus | 0.496 | 0.068 | 0.9 |
+| Cumulonimbus | 0.493 | 0.076 | 0.12 |
+| Cirrus | 0.511 | 0.083 | 0.7 |
 
 ### 5.6 Clouds and the sun lamp are not double counted
 
@@ -161,15 +182,32 @@ a persistent `frame_change_post` handler (so the add-on must be enabled on a ren
 |---|---|---|---|
 | Sky | single scattering | multiple | multiple |
 | Cloud noise octaves | 2 | 4 | 7 |
-| Cycles volume step rate / bounces / max steps | 3.0 / 2 / 512 | 1.5 / 4 / 1024 | 0.75 / 12 / 2048 |
+| Cycles volume bounces | 8 | 32 | 96 |
+| Cycles volume step rate / max steps (biased renderer only) | 3.0 / 512 | 1.5 / 1024 | 0.75 / 2048 |
+| Cloud emission fill | 0.6 | 0 | 0 |
+| Fog fill (times the optical-depth ramp) | 1.0 | 0.5 | 0.3 |
 | EEVEE volume tile / samples / shadows | 8 / 48 / off | 4 / 64 / on | 2 / 128 / on |
 
-The step rate is multiplied by `clouds.step_rate_scale`, a per-layer optical-depth budget collapsed into one
-scene value (Cycles exposes one step rate): a dense layer keeps the table value, while a scene made only of thin
-layers (cirrus, thin altostratus) relaxes it. "Configure render settings" can be switched off; the add-on then
-touches nothing.
+Blender 5 renders volumes with null scattering by default, which ignores step rate and max steps; they still
+apply when *Render > Volume > Biased* is on. The step rate is multiplied by `clouds.step_rate_scale`, a per-layer
+optical-depth budget collapsed into one scene value. Max bounces is raised to the volume bounces when it is lower
+(the total cap would clamp them). "Configure render settings" can be switched off; the add-on then touches nothing.
 
-## 6. Measured conventions (Blender 5.0.1; checks re-run on 5.2.1)
+### 5.10 Volumes never share a face
+
+Coincident faces of two volume objects (the haze dome's top on a cloud base, one layer's top on the next layer's
+base) render as vertical streaks in Cycles and cost time (a cumulus frame: 181 s with streaks, 59 s without). Cloud
+domains are padded `3 + 1.7 i` metres beyond their layer (the shader places density by absolute altitude, so the
+padding is empty) and the dome stops 25 m short of the lowest base.
+
+### 5.11 Auto exposure
+
+`skyview.auto_exposure` sets *Color Management > Exposure* from the scene's light (PHYSICS 9). The rendered
+irradiance uses a table of the AtmosFX sky's irradiance measured in Blender 5.2.3 (`skyview.SKY_IRRADIANCE`) and
+counts sky light three times, because the sky is usually in frame; the darkening per scene comes from
+`physics.CINEMATIC_KEY`, tuned on the look bench. It can be switched off or biased in the main panel.
+
+## 6. Measured conventions (Blender 5.0.1; checks re-run on 5.2.1; 1.0 look work on 5.2.3)
 
 | Fact | Measurement | Pinned by |
 |---|---|---|
@@ -185,7 +223,11 @@ touches nothing.
 | A bpy wheel needs `read_factory_settings(use_empty=True)` before scenes render | worlds rendered black otherwise | test harness |
 | EEVEE's engine identifier is `BLENDER_EEVEE` in 5.0.1 and 5.2.1; headless EEVEE renders work on macOS arm64 | four presets rendered, non-black | `eevee_*` checks |
 | EEVEE 96x96/8-sample renders of AtmosFX presets take ~0.4 s each on an M-series Mac | timing while writing the checks | `eevee_*` checks |
-| Cloud multiple-scatter fill: at 52 degrees the base is blue (B/R 2.0) and the top is 8x brighter; at 4 degrees the base is warm (R/B 3.2) and the halo strength is 20x noon | `cloud_scatter_lighting` values, Cycles previews of `fair_weather_cumulus` and `sunset_clouds` | `test_cloud_lighting_*` |
+| Cloud multiple-scatter fill (Draft only since 1.0): at 52 degrees the base is blue (B/R 2.0) and the top is 8x brighter; at 4 degrees the base is warm (R/B 3.2) and the halo strength is 20x noon | `cloud_scatter_lighting` values, Cycles previews of `fair_weather_cumulus` and `sunset_clouds` | `test_cloud_lighting_*` |
+| AtmosFX sky irradiance on a horizontal white plane (world only): 0.472 at 90 degrees, 0.0412 at 0, 0.00298 at -5, floor 0.0015 | Blender 5.2.3 Cycles, Metal | `SKY_IRRADIANCE`, `test_sky_irradiance_table` |
+| Light linking does not separate overlapping volumes | cumulus inside the haze dome lost its linked sun | `haze_overlaps_clouds`, section 5.2 |
+| A Light Path node in the cloud shader makes Metal >20x slower; in the fog shader it is harmless | 480 px cumulus frame, Blender 5.2.3 | section 5.4 |
+| Coincident volume faces streak | haze dome top on a cumulus base | section 5.10 |
 | Blender 5.2.1 LTS passes the fast suite and every Cycles/EEVEE render check unchanged | 27/27 with both render flags, macOS arm64 | CI matrix, `ATMOSFX_*` suites |
 
 ## 7. Calibration constants (artistic anchors)
@@ -198,8 +240,13 @@ touches nothing.
 | `STAR_GAIN` | 0.08 | `skyview` | eye-calibrated for a dark-sky render |
 | `MILKY_WAY_SCALE` | 0.22 | `nodes/sky.py` | eye-calibrated |
 | `MOON_GLOW` | 0.012 | `skyview` | eye-calibrated |
-| `CLOUD_LOW_SUN_FILL` / `CLOUD_TOP_LOW_FILL` | 0.16 / 0.20 | `physics` | warm underside/top multiple-scatter fill at low sun |
-| `CLOUD_GLOW_LOW_GAIN` | 4.0 | `physics` | forward-scatter halo at low sun |
+| `CLOUD_LOW_SUN_FILL` / `CLOUD_TOP_LOW_FILL` | 0.16 / 0.20 | `physics` | warm underside/top multiple-scatter fill at low sun (Draft) |
+| `CLOUD_GLOW_LOW_GAIN` | 4.0 | `physics` | forward-scatter halo at low sun (Draft) |
+| Cloud phase blend | 60 % HG g 0.4 + 40 % Mie | `clouds`, cloud shader | stands in for multiple-scattering octaves |
+| `CINEMATIC_KEY` | noon 0 ... starlight 5 stops | `physics` | on-screen darkening per real illuminance |
+| `SKY_WEIGHT` | 2 | `skyview` | extra weight of sky light in the exposure |
+| `CLOUD_BOUNCE` | 0.12 | `skyview` | light sent down by sunlit clouds, for the exposure |
+| `MOON_COLOR_TINT` | (0.80, 0.92, 1.08) | `skyview` | moonlight graded cool (Purkinje shift) |
 
 ## 8. Preset schema
 

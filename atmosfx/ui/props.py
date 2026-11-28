@@ -97,16 +97,28 @@ class AtmosFXCloudLayer(bpy.types.PropertyGroup):
     altitude_m: F(1500.0, 0.0, 20000.0, "Base altitude", "Height of the cloud base above the world origin", prec=0)
     thickness_m: F(1400.0, 50.0, 15000.0, "Thickness", "Vertical extent of the layer", prec=0)
     coverage: F(0.4, 0.0, 1.0, "Coverage", "0 = clear, 1 = overcast", subtype="FACTOR", prec=2)
-    density: F(0.02, 0.0005, 0.5, "Density", "Peak extinction coefficient in 1/m; higher is darker and more opaque", prec=4)
+    density: F(0.05, 0.0005, 0.5, "Density", "Peak extinction coefficient in 1/m (real cumulus 0.03-0.1); higher is "
+               "brighter on the sunlit side, darker underneath and more opaque", prec=4)
     scale_m: F(900.0, 50.0, 20000.0, "Feature size", "Size of the largest cloud features", prec=0)
     detail: F(0.6, 0.0, 1.0, "Detail", "Fine erosion of the cloud edges", subtype="FACTOR", prec=2)
-    anisotropy: F(0.8, 0.0, 0.95, "Forward scatter", "Henyey-Greenstein g; real cloud droplets scatter strongly forward", prec=2)
+    anisotropy: F(0.75, 0.0, 0.95, "Ice forward scatter", "Henyey-Greenstein g of ice-crystal clouds (cirrus). Water "
+                  "clouds use the Mie phase of their droplets", prec=2)
     wind_speed_ms: F(6.0, 0.0, 100.0, "Wind speed", "Metres per second", prec=1)
     wind_dir_deg: F(90.0, 0.0, 360.0, "Wind direction", "Compass bearing the wind blows toward (0 = +Y, 90 = +X)", prec=0)
     seed: I(1, 0, 100000, "Seed", "Different seeds give different cloud fields")
     radius_m: F(15000.0, 1000.0, 100000.0, "Radius", "Domain radius; clouds fade to nothing at the edge", prec=0)
     edge_fade: F(0.35, 0.0, 0.95, "Edge fade", "Fraction of the radius used to fade out", subtype="FACTOR", prec=2)
     follow_camera: B(True, "Follow camera", "Keep the domain centred over the camera in X/Y (clouds stay put in world space)")
+    cell: F(0.0, 0.0, 1.0, "Storm cell", "Pile cloud up in one place: a towering cell (0 = off). Drifts with the wind",
+            subtype="FACTOR", prec=2)
+    cell_bearing_deg: F(0.0, 0.0, 360.0, "Cell bearing", "Compass bearing of the cell from the world origin", prec=0)
+    cell_distance_m: F(15000.0, 0.0, 100000.0, "Cell distance", "Distance of the cell from the world origin", prec=0)
+    cell_radius_m: F(7000.0, 500.0, 50000.0, "Cell radius", "Radius of the cell", prec=0)
+    evolution: F(1.0, 0.0, 20.0, "Evolution", "How fast cloud shapes grow and dissolve in place, on top of drifting "
+                 "with the wind (1 = real cumulus: a cell turns over in ~15 min; 0 = frozen shapes)", prec=2)
+    lightning: F(0.0, 0.0, 60.0, "Lightning", "Flashes per minute lighting this layer from inside (0 = none); in "
+                 "the storm cell when there is one", prec=1)
+    lightning_brightness: F(1.0, 0.0, 20.0, "Flash brightness", "", prec=2)
 
 
 class AtmosFXSettings(bpy.types.PropertyGroup):
@@ -119,6 +131,9 @@ class AtmosFXSettings(bpy.types.PropertyGroup):
                                  ("PREVIEW", "Preview", "Balanced"),
                                  ("FINAL", "Final", "Multiple scattering, fine volumes, volumetric shadows")])
     auto_render_settings: B(True, "Configure render settings", "Let AtmosFX set volume quality in Cycles and EEVEE for the chosen tier")
+    auto_exposure: B(True, "Auto exposure", "Set Color Management > Exposure from the light of the scene, so day, "
+                     "twilight and night each render at a cinematic brightness (night darker than day, but legible)")
+    exposure_bias: F(0.0, -10.0, 10.0, "Exposure bias", "Stops added to the auto exposure", prec=2)
 
     # ---- time and place
     time_mode: EnumProperty(name="Mode", update=_upd, default="ARTISTIC",
@@ -151,6 +166,17 @@ class AtmosFXSettings(bpy.types.PropertyGroup):
     ground_enabled: B(True, "Ground below horizon", "Fill the lower hemisphere with a ground colour")
     ground_color: C((0.18, 0.17, 0.16), "Ground colour")
     ground_blend: F(0.02, 0.0, 0.5, "Horizon blend", "Softness of the horizon line", prec=3)
+    # ---- art direction (all neutral by default)
+    halo_strength: F(0.0, 0.0, 100.0, "Sun halo", "Bright aureole of forward-scattered light around the Sun (hazy "
+                     "air, thin cloud, lens flare look); 0 = the physical sky only", prec=2)
+    halo_size_deg: F(4.0, 0.1, 45.0, "Halo size", "Angular width of the sun halo, degrees", prec=1)
+    horizon_offset_deg: F(0.0, -20.0, 20.0, "Horizon offset", "Lowers (+) or raises (-) the horizon line, degrees: "
+                          "for cameras on hills or aircraft, or to hide the horizon behind terrain", prec=1)
+    sky_tint: C((1.0, 1.0, 1.0), "Sky tint", "Colour grade of the sky overhead (white = physical)")
+    horizon_tint: C((1.0, 1.0, 1.0), "Horizon tint", "Colour grade of the sky toward the horizon (white = physical)")
+    eclipse: F(0.0, 0.0, 1.0, "Solar eclipse", "Share of the Sun's diameter the Moon covers (1 = total): the disc "
+               "becomes a crescent, light and sky dim with the covered area, and totality shows the corona and a "
+               "sunset glow all round the horizon", subtype="FACTOR", prec=3)
 
     # ---- moon
     moon_enabled: B(True, "Moon")

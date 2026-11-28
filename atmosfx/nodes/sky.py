@@ -22,7 +22,7 @@ import bpy
 from .dsl import Builder
 
 GROUP_NAME = "AtmosFX Sky"
-GROUP_VERSION = 4
+GROUP_VERSION = 7  # 7: sun halo, horizon offset, sky/horizon tints, solar eclipse
 
 # name, socket type, default, (min, max)
 INPUTS = [
@@ -59,8 +59,20 @@ INPUTS = [
     ("Deck Color", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0), None),
     ("Deck Sun Light", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0), None),
     ("Moon Glow", "NodeSocketFloat", 0.0, (0.0, 10.0)),
+    # art direction and events (all neutral by default)
+    ("Halo Strength", "NodeSocketFloat", 0.0, (0.0, 100.0)),       # sun aureole, x 1e-4 of the disc radiance
+    ("Halo Size", "NodeSocketFloat", 0.07, (0.001, 1.0)),          # angular e-folding width of the aureole, radians
+    ("Horizon Offset", "NodeSocketFloat", 0.0, (-0.5, 0.5)),       # lowers (+) the horizon, in sin(elevation)
+    ("Sky Tint", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0), None),
+    ("Horizon Tint", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0), None),
+    ("Eclipse Offset", "NodeSocketFloat", 10.0, (0.0, 10.0)),     # Moon-Sun centre separation, solar radii
+    ("Eclipse Moon Ratio", "NodeSocketFloat", 1.03, (0.5, 2.0)),
+    ("Eclipse Tangent", "NodeSocketVector", (1.0, 0.0, 0.0), None),  # direction from the Sun's centre to the Moon's
+    ("Corona", "NodeSocketFloat", 0.0, (0.0, 1e9)),                # corona radiance at the limb
+    ("Eclipse Glow", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0), None),  # totality's 360-degree horizon glow
 ]
 
+MOONLIT_SKY = (0.60, 1.04, 1.83)   # noon sky irradiance colour (measured), normalised to luminance 1
 MILKY_WAY_SCALE = 0.22          # Milky Way radiance relative to a limiting-magnitude star pixel (visual calibration)
 
 
@@ -108,10 +120,19 @@ def build_group(scene: bpy.types.Scene) -> bpy.types.NodeTree:
     time_node = b.node("ShaderNodeValue", "AtmosFX Time")
     time_s = time_node.outputs[0]
 
+    # Horizon Offset: the sky and ground are looked up along a ray tilted up by the offset, so the horizon line
+    # sits lower in frame (a camera on a hill or a plane sees the horizon below eye level)
+    d_sky = b.normalize(b.comb(dx, dy, b.math("ADD", dz, gi("Horizon Offset"))))
+    _sx, _sy, dz_sky = b.sep(d_sky)
+
     # ------------------------------------------------------------- 1. Nishita sky
     b.col()
     sky = b.node("ShaderNodeTexSky", "Sky", sky_type="MULTIPLE_SCATTERING", sun_disc=False)
+    b.set(sky.inputs["Vector"], d_sky)
     sky_col = b.scale_rgb(sky.outputs["Color"], gi("Sky Strength"))
+    # art tints: Sky Tint overhead blending to Horizon Tint toward the horizon (white = physical)
+    near_h = b.math("POWER", b.math("SUBTRACT", 1.0, b.math("ABSOLUTE", dz_sky), clamp=True), 3.0)
+    sky_col = b.mul_rgb(sky_col, b.mix_rgb(near_h, gi("Sky Tint"), gi("Horizon Tint")))
 
     # ------------------------------------------------------------- 2. night glow
     horizon_w = b.math("SUBTRACT", 1.0, b.math("MULTIPLY", dz, dz), clamp=True)
@@ -182,8 +203,12 @@ def build_group(scene: bpy.types.Scene) -> bpy.types.NodeTree:
     # moonlit sky: a halo around the Moon plus a faint overall lift, tinted like the moonlight
     halo = b.math("EXPONENT", b.math("MULTIPLY", b.math("SUBTRACT", 1.0, cos_m), -12.0))
     lift = b.math("ADD", 0.35, b.math("MULTIPLY", b.math("MAXIMUM", dz, 0.0), 0.65))
-    moon_glow_k = b.math("MULTIPLY", gi("Moon Glow"), b.math("ADD", b.math("MULTIPLY", halo, 1.6), b.math("MULTIPLY", lift, 0.4)))
-    moon_glow = b.scale_rgb(gi("Moon Color"), moon_glow_k)
+    # the aureole around the Moon is forward-scattered moonlight (its colour); the rest of the moonlit sky is the
+    # same Rayleigh blue as the day sky, only ~400 000x dimmer (MOONLIT_SKY: the measured noon sky colour, lum 1)
+    halo_k = b.math("MULTIPLY", gi("Moon Glow"), b.math("MULTIPLY", halo, 1.6))
+    lift_k = b.math("MULTIPLY", gi("Moon Glow"), b.math("MULTIPLY", lift, 0.4))
+    halo_col = b.mix_rgb(0.5, gi("Moon Color"), (*MOONLIT_SKY, 1.0))  # dim warm light reads brown in AgX: half sky
+    moon_glow = b.add_rgb(b.scale_rgb(halo_col, halo_k), b.scale_rgb(MOONLIT_SKY, lift_k))
 
     # -------------------------------------------------------------------- 6. sun
     s = gi("Sun Direction")
@@ -196,13 +221,38 @@ def build_group(scene: bpy.types.Scene) -> bpy.types.NodeTree:
     rho_s = b.math("DIVIDE", b.length(t_s), b.math("MAXIMUM", b.math("SINE", r_s), 1e-6))
     mu = b.math("SQRT", b.math("SUBTRACT", 1.0, b.math("MULTIPLY", rho_s, rho_s), clamp=True))
     limb = b.math("SUBTRACT", 1.0, b.math("MULTIPLY", b.math("SUBTRACT", 1.0, mu), 0.45))
+    # eclipse: the Moon's disc (radius ratio k, centre Eclipse Offset solar radii from the Sun's along Eclipse
+    # Tangent) blacks out its part of the solar disc; small angles, so the offset is a tangent-plane shift
+    t_e = gi("Eclipse Tangent")
+    m_c = b.normalize(b.vmath("ADD", s, b.vmath("SCALE", t_e, scale=b.math("MULTIPLY", gi("Eclipse Offset"), r_s))))
+    r_moon = b.math("MULTIPLY", r_s, gi("Eclipse Moon Ratio"))
+    moon_disc = b.smoothstep(b.dot(d, m_c), b.math("COSINE", b.math("MULTIPLY", r_moon, 1.015)),
+                             b.math("COSINE", b.math("MULTIPLY", r_moon, 0.985)))
+    s_mask = b.math("MULTIPLY", s_mask, b.math("SUBTRACT", 1.0, moon_disc))
     sun_k = b.math("MULTIPLY", b.math("MULTIPLY", s_mask, gi("Sun Disc Radiance")), b.math("MULTIPLY", limb, gate))
     sun = b.scale_rgb(gi("Sun Color"), sun_k)
+    # corona: pearly light falling off steeply beyond the limb (~ rho^-6), with streamers, outside the Moon's disc
+    rho_c = b.math("MAXIMUM", rho_s, 1.0)
+    streak = b.noise(b.vmath("SCALE", t_s, scale=b.math("DIVIDE", 1.0, b.math("MAXIMUM", b.length(t_s), 1e-6))),
+                     3.0, 2.0, 0.5)
+    corona_k = b.math("MULTIPLY", b.math("MULTIPLY", gi("Corona"), b.math("POWER", rho_c, -6.0)),
+                      b.math("MULTIPLY", b.math("ADD", 0.55, streak), b.math("SUBTRACT", 1.0, s_mask)))
+    corona_k = b.math("MULTIPLY", corona_k, b.math("MULTIPLY", b.math("SUBTRACT", 1.0, moon_disc), gate))
+    sun = b.add_rgb(sun, b.scale_rgb((0.92, 0.95, 1.0), corona_k))
+    # sun halo (aureole): forward-scattered sunlight around the disc, falling off with angle from the Sun
+    theta = b.math("ARCCOSINE", b.math("MINIMUM", b.math("MAXIMUM", cos_s, -1.0), 1.0))
+    halo_s = b.math("MULTIPLY", b.math("MULTIPLY", gi("Halo Strength"), 1e-4),
+                    b.math("MULTIPLY", gi("Sun Disc Radiance"),
+                           b.math("EXPONENT", b.math("DIVIDE", b.math("MULTIPLY", theta, -1.0), gi("Halo Size")))))
+    sun = b.add_rgb(sun, b.scale_rgb(gi("Sun Color"), halo_s))
 
     # ------------------------------------------------------------- composite 1-6
     b.col()
     celestial = b.add_rgb(stars, mw)
     bg = b.add_rgb(b.add_rgb(sky_col, glow), celestial)
+    # totality: an orange glow all round the horizon (sunlight from outside the Moon's shadow)
+    eg = b.math("EXPONENT", b.math("MULTIPLY", b.math("MAXIMUM", dz_sky, 0.0), -12.0))
+    bg = b.add_rgb(bg, b.scale_rgb(gi("Eclipse Glow"), eg))
     bg = b.add_rgb(bg, b.add_rgb(b.add_rgb(moon, sun), moon_glow))
 
     # ---------------------------------------------------------------- 7. cloud deck
@@ -228,7 +278,7 @@ def build_group(scene: bpy.types.Scene) -> bpy.types.NodeTree:
     bg = b.mix_rgb(alpha, bg, deck_rgb)
 
     # ------------------------------------------------------------------ 8. ground
-    g_mask = b.math("MULTIPLY", b.smoothstep(dz, gi("Ground Blend"), b.math("MULTIPLY", gi("Ground Blend"), -1.0)),
+    g_mask = b.math("MULTIPLY", b.smoothstep(dz_sky, gi("Ground Blend"), b.math("MULTIPLY", gi("Ground Blend"), -1.0)),
                     gi("Ground Enabled"))
     ground = b.scale_rgb(gi("Ground Color"), gi("Ground Strength"))
     bg = b.mix_rgb(g_mask, bg, ground)

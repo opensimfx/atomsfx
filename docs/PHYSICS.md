@@ -87,27 +87,103 @@ rises (`smoothstep(3, -5, sun_el)`) because the artistic anchor otherwise rivals
 ## 7. Visibility, fog and haze
 
 Koschmieder: `V = -ln(eps) / sigma_t`, with the WMO contrast threshold `eps = 0.02`, so `sigma_t = 3.912 / V`
-(1 km -> 0.003912 1/m; the test checks that transmittance over V is exactly 2 %). The density falls off as
-`exp(-(z - base)/H)`. Classes: dense fog < 50 m, thick < 200 m, moderate < 500 m, light < 1 km, mist < 2 km,
-haze < 5 km, light haze < 10 km, clear < 20 km, very clear < 50 km, exceptionally clear beyond.
-The haze dome radius is `1.4 V` (transmittance 0.3 % at the edge).
+(1 km -> 0.003912 1/m; the test checks that transmittance over V is exactly 2 %). Classes: dense fog < 50 m,
+thick < 200 m, moderate < 500 m, light < 1 km, mist < 2 km, haze < 5 km, light haze < 10 km, clear < 20 km,
+very clear < 50 km, exceptionally clear beyond.
+
+The camera-following haze dome holds the two components of real air:
+
+- **Clean air (Rayleigh)**: extinction per channel `beta(l) = tau_R(l) / 8000 m` x *Air*, about
+  (6.6, 12.2, 25.3) x 1e-6 /m at sea level, falling off with an 8 km scale height, with Blender's Rayleigh phase.
+  Over 20 km it removes 12 % of red and 40 % of blue light, which is why distant ridges turn blue before they turn
+  grey (aerial perspective). Only the dome carries air; a local fog bank never adds it twice.
+- **Aerosol** (haze, fog, smog, dust): the Koschmieder total minus the clean-air share at 550 nm, so *Visibility*
+  describes the whole atmosphere (pure air alone is ~320 km). Falls off as `exp(-(z - base)/H)` and takes the
+  fog colour, absorption and Henyey-Greenstein anisotropy.
+
+Dome size: radius `max(1.4 V, 40 km)` (transmittance 0.3 % at 1.4 V; 40 km so ridges 20-30 km away have air to
+turn blue in); height `max(5 H, 4 km)` (the profile below 1 %), but it ends 25 m under the lowest cloud base:
+haze is the boundary layer, which cumulus bases cap, and Cycles light linking does not separate overlapping
+volumes (see SYSTEM_DESIGN 5.4).
+
+**Multiple-scatter fill.** Thick fog lit by a path tracer with a capped bounce count goes dark, so the fog shader
+emits an ambient term in proportion to density. Light escapes a medium through its smallest dimension, so the
+gain is `tier x smoothstep(1, 8, sigma_t H)` of the *vertical* optical depth: zero for haze (a clear day is ~0.15),
+full for dense fog (~15). It is visible to camera rays only (a Light Path gate), so it brightens what is seen
+without adding light to the scene.
 
 ## 8. Clouds
 
-- **Extinction** `sigma_t` in 1/m is the peak density; kind defaults range from 0.003 (cirrus) to 0.030
-  (cumulonimbus). Optical depth through a layer is roughly `sigma_t x thickness x fill`; real cumulus is 5-50.
-  Render defaults sit in the low half of that range because a path tracer with a few volume bounces darkens thick
-  clouds (measured: 0.05 /m cumulus rendered as dark storm cloud; 0.02 /m reads as cumulus).
-- **Phase**: two Henyey-Greenstein lobes, forward `g` 0.7-0.85 and a back lobe -0.25 at 25 %.
-- **Coverage**: quantile of the normal shape field (see SYSTEM_DESIGN 5.5).
-- **Multiple scattering**: `physics.cloud_scatter_lighting` returns the ambient base, top colour and
-  forward-scatter halo the shader emits in proportion to density. It is display-calibrated, not radiative
-  transfer: a high sun gives a blue shadowed base and a bright neutral top; a low sun gives a warm underside
-  because the light reaches the cloud from below. See SYSTEM_DESIGN 5.4.
+- **Extinction** from the microphysics (Kokhanovsky 2004): `sigma_t = 3 LWC / (2 rho_w r_eff)`. Kind defaults:
+  cumulus 0.05 /m (LWC ~0.33 g/m3, r_eff 10 um), stratocumulus 0.03, stratus 0.025, altocumulus 0.025,
+  altostratus 0.01, cumulonimbus 0.07, cirrus 0.003 (ice; optical depth ~3 through 900 m). Optical depth through a
+  cumulus is 30-70, as in nature. Earlier versions used 0.02 because Blender's old biased ray marcher
+  underestimated optical depth; under the null-scattering renderer of Blender 5 that renders clouds
+  "transport-thin": light passes through instead of diffusing back out, and sunlit sides look grey.
+- **Phase**: water clouds blend Blender's **Mie** phase for the droplet diameter (`2 r_eff`: 10-30 um by genus; the
+  Jendersie and d'Eon 2023 fit for 5-50 um) with a weak-forward Henyey-Greenstein lobe (g 0.4, 60 %). Pure Mie has a
+  very sharp forward peak (half of it g ~0.995), so light needs hundreds of bounces to diffuse back out of a thick
+  cloud: cumulus stayed grey on its sunlit side even at 128 bounces. The soft lobe plays the role of the
+  multiple-scattering octaves used in production (Wrenninge 2010; Hillaire 2016) and lets light diffuse in ~10
+  bounces; the Mie share keeps the forward peak, so backlit edges glow (silver linings). Ice clouds (cirrus) use
+  Henyey-Greenstein `g` 0.75.
+- **Shape** (Schneider 2015, as shader nodes): a 2D weather field sets where cloud can form; the 3D field blends
+  fractal Perlin noise with inverted fractal Worley noise (billows); the height profile gives a sharp flat base at
+  the condensation level and raises the threshold with height, so lumps narrow into domes; an anvil term spreads
+  the top of a cumulonimbus; erosion is wispy at the base and billowy at the top. The noise frame is turned to the
+  wind, and a per-genus **fibre** stretches it downwind (cirrus 6: streaks; altocumulus 1.6: rows). A **storm
+  cell** adds cover in a disc anchored in world space that drifts with the wind.
+- **Coverage**: the (1 - coverage) quantile of the shape field at mid-height, from each kind's measured mean and
+  standard deviation (see SYSTEM_DESIGN 5.5). Edge softness is a multiple of that deviation: crisp cumulus
+  (0.12 sd), soft stratus (0.8 sd).
+- **Multiple scattering**: real volume bounces (32 in Preview, 96 in Final; cheap, because most paths leave early:
+  overcast at 12/32/64 bounces took 21/31/37 s, and only 32+ lit the underside of a stratus deck). Draft (8) adds the
+  display-calibrated emission of `physics.cloud_scatter_lighting`; Preview and Final do not, because a
+  non-absorbing, forward-scattering cloud lets every emitted photon escape, so emission adds energy in proportion
+  to optical depth (an emitting altocumulus deck lit the ground orange at sunset).
 - **Wind** `v` (m/s) shifts the noise lookup by `-v t freq`, with `t = (frame - 1)/fps` seconds.
 - **Genera** altitude/thickness follow WMO levels for mid-latitudes (`physics.CLOUD_TYPE_ALTITUDES_M`).
 
-## 9. Accuracy summary
+### Evolution and lightning
+
+- **Evolution** (modelled): the noise space scrolls up by `Evolution / 900 s` feature sizes per second, so features
+  rise through the height profile, swell and dissolve; a fair-weather cumulus cell lives 10-20 minutes.
+- **Lightning** (cited timing: Rakov and Uman 2003; modelled light): flash starts are a Poisson process at the set
+  rate; each flash has 1-4 return strokes 40-120 ms apart, the first the brightest, each followed by a one-frame
+  afterglow (30 %). A stroke is volume emission proportional to the cloud's extinction with a Gaussian falloff
+  (0.35 x the layer's depth, 500-3000 m) around a point at 25-65 % of the layer's depth, so the cloud lights from
+  inside and real bounces carry the light on. Positions sit in the storm cell (drifting with it) or the inner
+  layer.
+
+## 9. Exposure
+
+Real light spans ~28 stops from noon (~120 000 lux) to starlight (~0.0007 lux). AtmosFX keeps physical ratios in
+the day and compresses the night (the moon lamp anchor is artistic, section 6), and **auto exposure** sets
+*Color Management > Exposure* so every scene renders at a cinematic brightness:
+
+- Real illuminance: the direct beam from the transmittance model plus a diffuse sky term (730 lux at sunset,
+  ~20 000 with a high sun); below the horizon the U.S. Naval Observatory twilight values (Bond and Henderson 1963):
+  3.4 lux at the end of civil twilight, 0.008 at the end of nautical, 0.0007 starlight. Plus the Moon (section 6).
+- Rendered irradiance: sun lamp x sin(elevation), the AtmosFX sky's measured irradiance (a white plane lit by the
+  world only, Blender 5.2.3; 0.47 at noon, 0.041 at sunset, 0.0015 night-glow floor), moon lamp, and light bounced
+  down by sunlit clouds. Sky light counts three times, because the sky is usually in frame: a sky-lit scene
+  (twilight, moonless night) is exposed for the sky, not for the dark ground.
+- Exposure = `log2(noon / rendered) - key(real)`, where the key is how many stops darker than noon the scene
+  should look on screen: golden hour 1.1, sunset 1.3, civil twilight 1.9, blue hour 2.4, full moon 3.2,
+  starlight 5 (tuned on the look bench). Clamped to -3..+10; *Exposure bias* adds to it.
+
+### Solar eclipse
+
+Magnitude m is the share of the Sun's diameter the Moon covers (Moon/Sun radius ratio k = 1.03). The centres
+are d = 1 + k - 2m solar radii apart, and the uncovered share of the disc is 1 - (circle-overlap area) / pi
+(limb darkening ignored); the sun lamp and the cloud sun scale by it, the sky by it down to a totality floor.
+Physically the zenith at totality falls to ~1e-4 of daylight and the corona is ~1e-6 of the photosphere, but
+AtmosFX compresses night (exposure caps at 10, the moon is boosted ~2e4), so totality is placed on that night
+scale: the sky dims to 5e-3 (twilight), the horizon keeps an orange glow (5 % of the day sky), stars to
+magnitude 3 come out, and the corona (radiance ~ rho^-6 beyond the limb, with streamers) appears once the
+photosphere is fully covered (m > 0.985). The Moon's disc shows the colour of the sky in front of it, as it does.
+
+## 10. Accuracy summary
 
 | Quantity | Accuracy | Basis |
 |---|---|---|
@@ -118,7 +194,6 @@ The haze dome radius is `1.4 V` (transmittance 0.3 % at the edge).
 | Sun disc alignment in a render | 0.09 degree | Cycles render check |
 | Moon limb orientation | direction agrees (component error 0.17) | Cycles render check |
 | Sunrise/sunset | within ~6 minutes | two reference places |
-| Absolute brightness | artistic | section 6 and SYSTEM_DESIGN 7 |
+| Absolute brightness | artistic; ratios physical by day, night compressed | sections 6, 9 and SYSTEM_DESIGN 7 |
 
-Not modelled: planets, aurora, airglow variation, aerial perspective colour shift beyond single-colour fog, planet
-curvature, cloud-to-cloud shadows between layers beyond what the path tracer does, lunar libration.
+Not modelled: planets, aurora, airglow variation, planet curvature, cloud-to-cloud shadows between layers beyond what the path tracer does, lunar libration.

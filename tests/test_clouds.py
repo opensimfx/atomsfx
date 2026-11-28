@@ -56,8 +56,13 @@ def test_socket_values_content():
     assert v["Frequency"] == pytest.approx(1 / 900)
     assert v["Inner Radius"] == pytest.approx(15000 * 0.65)
     assert v["Wind Velocity"] == pytest.approx((10, 0, 0), abs=1e-9)
-    assert v["Threshold"] == pytest.approx(C.coverage_threshold(0.4))
+    cu = C.kind("CUMULUS")
+    assert v["Threshold"] == pytest.approx(C.coverage_threshold(0.4, cu.field_mean, cu.field_std))
+    assert v["Softness"] == pytest.approx(cu.edge * cu.field_std)        # crisp cumulus edges
     assert v["Vertical Stretch"] == 1.0 and v["Anvil"] == 0.0
+    assert v["Droplet Diameter"] == 20.0 and v["Ice"] == 0.0 and v["Fill"] == 0.0   # Final bounces for real
+    assert C.socket_values(layer(), "DRAFT")["Fill"] > 0                         # Draft (4 bounces) keeps a fill
+    assert C.socket_values(layer(kind="CIRRUS"))["Ice"] == 1.0
     cb = C.socket_values(layer(kind="CUMULONIMBUS"), "DRAFT")
     assert cb["Anvil"] > 0 and cb["Octaves"] == 2.0
     # edge fade can never reach a zero-width ramp
@@ -88,3 +93,28 @@ def test_cost_estimate_scales_with_volume_and_quality():
     a, b = layer(), layer(radius_m=30000.0)
     assert C.estimate_domain_cost(b) == pytest.approx(4 * C.estimate_domain_cost(a))
     assert C.estimate_domain_cost(a, "FINAL") > C.estimate_domain_cost(a, "DRAFT")
+
+
+def test_kinds_are_physical():
+    for k in C.KINDS.values():
+        assert 5.0 <= k.droplet_um <= 50.0                    # the Mie fit's valid range
+        assert 0.0 < k.field_std < 0.2 and 0.3 < k.field_mean < 0.7
+        if k.ice < 1.0:                                       # liquid clouds: 0.01-0.1 /m (Kokhanovsky 2004)
+            assert 0.008 <= k.density <= 0.12, k.key
+    assert C.kind("CIRRUS").density < 0.01                  # thin ice cloud, optical depth ~0.03-3
+    stratus, cumulus = C.kind("STRATUS"), C.kind("CUMULUS")
+    assert stratus.edge > cumulus.edge and stratus.billow < cumulus.billow   # soft sheets vs crisp lumps
+
+
+def test_storm_cell_is_anchored_and_off_by_default():
+    assert C.socket_values(layer())["Cell Strength"] == 0.0
+    cell = layer(kind="CUMULONIMBUS", cell=1.0, cell_bearing_deg=90.0, cell_distance_m=20000.0, cell_radius_m=8000.0)
+    v = C.socket_values(cell)
+    assert v["Cell Center"] == pytest.approx((20000.0, 0.0, 0.0), abs=1e-6)      # bearing 90 = +X
+    assert v["Cell Radius"] == 8000.0
+    assert v["Cell Strength"] == pytest.approx(C.CELL_GAIN * C.kind("CUMULONIMBUS").field_std)
+    assert C.socket_values(layer(cell=0.5))["Cell Strength"] == pytest.approx(0.5 * C.CELL_GAIN * C.kind("CUMULUS").field_std)
+
+
+def test_fibre_follows_the_kind():
+    assert C.socket_values(layer(kind="CIRRUS"))["Fibre"] > 4.0 > C.socket_values(layer())["Fibre"] == 1.0

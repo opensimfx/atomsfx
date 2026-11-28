@@ -173,6 +173,19 @@ class Builder:
             self.set(n.inputs["W"], w)
         return n.outputs["Fac"]
 
+    def billow(self, vec, scale=1.0, detail=0.0, roughness=0.5) -> Socket:
+        """Inverted Worley (Voronoi F1) noise: 1 at the feature points, falling toward the cell edges, so a
+        threshold gives rounded, cauliflower-like lumps. ``detail`` > 0 adds fractal octaves (Blender 4.0+)."""
+        n = self.node("ShaderNodeTexVoronoi", voronoi_dimensions="3D", feature="F1", distance="EUCLIDEAN")
+        self.set(n.inputs["Vector"], vec)
+        self.set(n.inputs["Scale"], scale)
+        for name, v in (("Detail", detail), ("Roughness", roughness)):
+            if name in n.inputs:
+                self.set(n.inputs[name], v)
+        if hasattr(n, "normalize"):
+            n.normalize = True
+        return self.math("SUBTRACT", 1.0, n.outputs["Distance"])
+
     def mapping(self, vec, loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)) -> Socket:
         n = self.node("ShaderNodeMapping", vector_type="POINT")
         self.set(n.inputs["Vector"], vec)

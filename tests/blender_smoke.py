@@ -103,7 +103,7 @@ def preset_enum_applies_through_the_property():
     s = scene.atmosfx
     apply.create(scene)
     s.preset = "storm_cumulonimbus"
-    assert len(s.clouds) == 2 and s.clouds[0].kind == "CUMULONIMBUS" and s.fog_enabled
+    assert len(s.clouds) == 1 and s.clouds[0].kind == "CUMULONIMBUS" and s.clouds[0].cell == 1.0 and s.fog_enabled
     assert abs(s.sun_elevation - 28.0) < 1e-6
 
 
@@ -124,7 +124,9 @@ def cloud_layer_operators():
     obj = bpy.data.objects["AtmosFX Cloud 1"]
     s.clouds[0].radius_m = 20000.0
     s.clouds[0].altitude_m = 2500.0
-    assert tuple(obj.scale)[:2] == (20000.0, 20000.0) and obj.location.z == 2500.0
+    # the domain is padded 3 m (first layer) around the layer so stacked volumes never share a face
+    assert tuple(obj.scale)[:2] == (20000.0, 20000.0) and abs(obj.location.z - 2497.0) < 1e-3
+    assert abs(obj.scale[2] - (s.clouds[0].thickness_m + 6.0)) < 1e-3
     s.clouds[0].enabled = False
     assert obj.hide_render
     s.clouds[0].kind = "STRATUS"                      # switching kind loads its defaults
@@ -178,6 +180,25 @@ def cloud_materials_receive_the_multiscatter_lighting():
 
 
 @check
+def haze_dome_ends_under_the_cloud_base():
+    # Cycles light linking does not separate overlapping volumes: the dome must stop under the clouds, and when a
+    # fog bank reaches into a layer the cloud sun is dropped (one sun lights everything)
+    scene = fresh()
+    s = scene.atmosfx
+    state.write_preset(s, P.get("fair_weather_cumulus"))
+    apply.create(scene)
+    r, h, z0 = objects.haze_dimensions(s)
+    base = s.clouds[0].altitude_m
+    assert abs(z0 + h - (base - objects.DOME_GAP_M)) < 1e-6
+    assert not objects.haze_overlaps_clouds(s) and bpy.data.objects.get(objects.CLOUD_SUN_NAME)
+    cloud = bpy.data.objects["AtmosFX Cloud 1"]
+    assert cloud.location.z < base and cloud.location.z + cloud.scale[2] > base + s.clouds[0].thickness_m  # padded
+    s.fog_mode, s.fog_domain_height = "BOTH", base + 100.0
+    assert objects.haze_overlaps_clouds(s) and bpy.data.objects.get(objects.CLOUD_SUN_NAME) is None
+    assert bpy.data.objects[objects.SUN_NAME].light_linking.receiver_collection is None
+
+
+@check
 def fog_modes_create_the_right_objects():
     scene = fresh()
     s = scene.atmosfx
@@ -185,7 +206,12 @@ def fog_modes_create_the_right_objects():
     apply.create(scene)
     assert bpy.data.objects.get(objects.HAZE_NAME) and not bpy.data.objects.get(objects.FOG_NAME)
     r, h, z0 = objects.haze_dimensions(s)
-    assert r == 300.0 and z0 == -200.0 and abs(h - (5 * 300 + 200)) < 1e-6
+    # 1.4 x 80 m visibility and 5 x 300 m scale height, raised to the dome's minimum reach for clean air
+    assert r == objects.AIR_REACH_M and z0 == -200.0 and abs(h - (objects.AIR_HEIGHT_M + 200)) < 1e-6
+    s.fog_visibility, s.fog_scale_height = 50000.0, 1500.0
+    r, h, _ = objects.haze_dimensions(s)
+    assert r == 70000.0 and abs(h - (5 * 1500 + 200)) < 1e-6
+    state.write_preset(s, P.get("dense_fog"))
     s.fog_mode = "DOMAIN"
     assert not bpy.data.objects.get(objects.HAZE_NAME) and bpy.data.objects.get(objects.FOG_NAME)
     s.fog_mode = "BOTH"
@@ -194,8 +220,14 @@ def fog_modes_create_the_right_objects():
     assert not bpy.data.objects.get(objects.HAZE_NAME) and not bpy.data.objects.get(objects.FOG_NAME)
     s.fog_enabled, s.fog_mode, s.fog_visibility = True, "WORLD", 20000.0
     node = bpy.data.materials["AtmosFX Haze"].node_tree.nodes["AtmosFX Group"]
-    assert abs(node.inputs["Density"].default_value - 3.912 / 20000.0) < 1e-6
-    assert abs(objects.haze_dimensions(s)[0] - 28000.0) < 1e-6
+    # aerosol = Koschmieder total minus clean air; the dome also carries the air (Rayleigh, blue-weighted)
+    from atmosfx.core import physics
+    air = physics.rayleigh_extinction_rgb(s.air_density)
+    assert abs(node.inputs["Density"].default_value - (3.912 / 20000.0 - air[1])) < 1e-7
+    assert abs(node.inputs["Air Density"].default_value - air[2]) < 1e-9
+    assert abs(objects.haze_dimensions(s)[0] - objects.AIR_REACH_M) < 1e-6
+    fog = bpy.data.materials["AtmosFX Fog Domain"].node_tree.nodes["AtmosFX Group"] if bpy.data.materials.get("AtmosFX Fog Domain") else None
+    assert fog is None or fog.inputs["Air Density"].default_value == 0.0      # a fog bank never adds air twice
     # no world volume is ever created (Cycles blanks the sky for infinite world volumes)
     out = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeOutputWorld")
     assert not out.inputs["Volume"].is_linked
@@ -282,9 +314,9 @@ def render_settings_follow_the_quality_tier():
     s = scene.atmosfx
     apply.create(scene)
     s.quality = "FINAL"
-    assert scene.cycles.volume_bounces == 12 and scene.cycles.volume_step_rate == 0.75
+    assert scene.cycles.volume_bounces == 96 and scene.cycles.volume_step_rate == 0.75
     s.quality = "DRAFT"
-    assert scene.cycles.volume_bounces == 2
+    assert scene.cycles.volume_bounces == 8
     s.auto_render_settings = False
     scene.cycles.volume_bounces = 5
     s.quality = "FINAL"

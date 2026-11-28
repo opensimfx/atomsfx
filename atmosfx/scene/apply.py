@@ -16,9 +16,9 @@ last_view: dict[str, SkyView] = {}
 
 QUALITY = {
     #           cycles step rate, preview rate, max steps, bounces | eevee tile, samples, shadows
-    "DRAFT": (3.0, 6.0, 512, 2, "8", 48, False),
-    "PREVIEW": (1.5, 3.0, 1024, 4, "4", 64, True),
-    "FINAL": (0.75, 1.5, 2048, 12, "2", 128, True),
+    "DRAFT": (3.0, 6.0, 512, 8, "8", 48, False),
+    "PREVIEW": (1.5, 3.0, 1024, 32, "4", 64, True),
+    "FINAL": (0.75, 1.5, 2048, 96, "2", 128, True),
 }
 
 
@@ -40,6 +40,8 @@ def apply_render_settings(scene, s) -> None:
         _try(cy, "volume_preview_step_rate", pstep * scale)
         _try(cy, "volume_max_steps", steps)
         _try(cy, "volume_bounces", bounces)
+        if getattr(cy, "max_bounces", bounces) < bounces:      # the total cap would silently clamp volume bounces
+            _try(cy, "max_bounces", bounces)
     ev = getattr(scene, "eevee", None)
     if ev is not None:
         _try(ev, "volumetric_tile_size", tile)
@@ -77,6 +79,25 @@ def cloud_lit_altitude(s) -> float:
     return min(sum(mids) / len(mids), 9000.0) if mids else 0.0
 
 
+def cloud_light(s) -> float:
+    """Share of clear-sky ground light left under the enabled volumetric layers, for the auto exposure."""
+    from ..core import physics
+    f = 1.0
+    for l in s.clouds:
+        if l.enabled:
+            f *= physics.cloud_light_factor(l.coverage, cloudlib.optical_depth(l, mean_fill=0.7))
+    return f
+
+
+def volumetric_cover(s) -> float:
+    """Combined sky cover of the enabled volumetric layers (random overlap)."""
+    clear = 1.0
+    for l in s.clouds:
+        if l.enabled:
+            clear *= 1.0 - min(max(l.coverage, 0.0), 1.0)
+    return 1.0 - clear
+
+
 def params_from_settings(scene, s) -> SkyParams:
     day = min(s.day, calendar.monthrange(s.year, s.month)[1])
     fps = scene.render.fps / (scene.render.fps_base or 1.0)
@@ -85,12 +106,13 @@ def params_from_settings(scene, s) -> SkyParams:
         latitude=s.latitude, longitude=s.longitude, year=s.year, month=s.month, day=day, hour=s.hour,
         utc_offset=s.utc_offset, north_offset=s.north_offset, refraction=s.refraction,
         sun_strength=s.sun_strength, sun_size_scale=s.sun_size_scale, use_sun_lamp=s.use_sun_lamp,
-        aerosol_density=s.aerosol_density,
+        aerosol_density=s.aerosol_density, eclipse=s.eclipse,
         moon_enabled=s.moon_enabled, moon_phase=s.moon_phase, moon_elevation=s.moon_elevation,
         moon_azimuth=s.moon_azimuth, moon_strength=s.moon_strength, moon_size_scale=s.moon_size_scale,
         stars_enabled=s.stars_enabled, star_brightness=s.star_brightness, magnitude_limit=s.magnitude_limit,
         milky_way=s.milky_way, sky_strength=s.sky_strength, night_glow=s.night_glow,
-        cloud_cover=cloud_cover(s), cloud_lit_altitude_m=cloud_lit_altitude(s), animate_time=s.animate_time, time_scale=s.time_scale,
+        cloud_cover=cloud_cover(s), cloud_lit_altitude_m=cloud_lit_altitude(s),
+        cloud_light=cloud_light(s), cloud_cover_volumetric=volumetric_cover(s), animate_time=s.animate_time, time_scale=s.time_scale,
         frame=scene.frame_current, frame_start=scene.frame_start, fps=fps,
     )
 
@@ -110,6 +132,8 @@ def refresh(scene: bpy.types.Scene) -> SkyView | None:
         objects.update_cloud_sun(scene, s, view)
         objects.update_fog(scene, s, view)
         apply_render_settings(scene, s)
+        if s.auto_exposure:
+            scene.view_settings.exposure = view.exposure + s.exposure_bias
         last_view[scene.name] = view
         return view
     finally:

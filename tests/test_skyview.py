@@ -4,6 +4,7 @@ import pytest
 
 from atmosfx.core import astro, physics
 from atmosfx.core.skyview import SkyParams, compute_view, effective_hour
+from atmosfx.core import skyview as sv
 
 
 def view(**kw):
@@ -186,3 +187,26 @@ def test_cloud_sun_is_off_without_volumetric_layers_and_beats_the_ground_sun_at_
     assert noon.cloud_sun_strength == pytest.approx(noon.sun_lamp_strength, rel=0.15)
     night = view(sun_elevation=-20, cloud_lit_altitude_m=3000.0)
     assert night.cloud_sun_strength == 0.0
+
+
+def test_auto_exposure_keys_day_twilight_and_night():
+    def ev(**kw):
+        return sv.compute_view(sv.SkyParams(**kw)).exposure
+    noon = ev(sun_elevation=70.0, moon_enabled=False)
+    golden = ev(sun_elevation=6.0, moon_enabled=False)
+    blue = ev(sun_elevation=-5.0, moon_enabled=False)
+    starry = ev(sun_elevation=-35.0, moon_enabled=False)
+    moon = ev(sun_elevation=-35.0, moon_phase=0.5, moon_elevation=50.0)
+    assert abs(noon) < 0.2                                             # exposure 0 is daylight
+    assert 0 < golden < blue                                           # darker scenes are lifted ...
+    assert moon < starry                                               # ... a moon lights the ground: less lift
+    assert -3.0 <= min(noon, golden, blue, starry, moon) and max(noon, golden, blue, starry, moon) <= 10.0
+    # an overcast deck darkens the scene, so the exposure rises
+    assert ev(sun_elevation=40.0, moon_enabled=False, cloud_light=0.3) > ev(sun_elevation=40.0, moon_enabled=False) + 1.0
+
+
+def test_sky_irradiance_table():
+    assert sv.sky_irradiance(90.0) == pytest.approx(0.472)
+    assert sv.sky_irradiance(-30.0) == pytest.approx(0.00151)
+    vals = [sv.sky_irradiance(e) for e in range(90, -20, -5)]
+    assert vals == sorted(vals, reverse=True)

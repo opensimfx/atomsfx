@@ -126,3 +126,37 @@ def test_sun_at_altitude_is_brighter_and_less_red():
     assert ph.sun_strength_ratio(90.0, altitude_m=4000.0) > 1.0         # a little more than at the ground
     c0, c4 = ph.sun_color_rgb(3.0), ph.sun_color_rgb(3.0, altitude_m=4000.0)
     assert c4[1] > c0[1] and c4[2] > c0[2]                              # golden clouds, red ground
+
+
+def test_air_and_aerosol_split_the_visibility():
+    r, g, b = ph.rayleigh_extinction_rgb()
+    assert r < g < b and b == pytest.approx(2.53e-5, rel=0.02)          # blue scatters ~4x more than red
+    assert ph.rayleigh_extinction_rgb(0.5)[2] == pytest.approx(b / 2)
+    # the visibility describes the whole atmosphere: aerosol is the Koschmieder total minus clean air
+    assert ph.aerosol_extinction(20000.0) == pytest.approx(ph.koschmieder_extinction(20000.0) - g)
+    assert ph.aerosol_extinction(400000.0) == 0.0                       # cleaner than pure air: no aerosol left
+    assert ph.aerosol_extinction(20000.0, air_density=0.0) == pytest.approx(ph.koschmieder_extinction(20000.0))
+
+
+def test_daylight_and_twilight_illuminance():
+    assert ph.daylight_illuminance_lux(90.0) == pytest.approx(1.2e5, rel=0.1)
+    assert ph.daylight_illuminance_lux(0.0) == pytest.approx(730.0)
+    assert ph.daylight_illuminance_lux(-6.0) == pytest.approx(3.4)     # end of civil twilight
+    assert ph.daylight_illuminance_lux(-12.0) == pytest.approx(0.008)  # end of nautical twilight
+    seq = [ph.daylight_illuminance_lux(e) for e in (60, 20, 5, 0, -3, -7, -11, -16, -30)]
+    assert seq == sorted(seq, reverse=True)
+
+
+def test_cinematic_key_compresses_darkness():
+    keys = [ph.cinematic_key_stops(ph.daylight_illuminance_lux(e)) for e in (70, 6, 0, -5, -18)]
+    assert keys == sorted(keys) and keys[0] < 0.1
+    assert keys[-1] < 6.0                                              # starlight: ~28 real stops become ~5 on screen
+    full_moon = ph.cinematic_key_stops(ph.moon_illuminance_lux(0.0, 50.0))
+    assert keys[3] < full_moon < keys[-1]                              # moonlit night: darker than blue hour
+
+
+def test_cloud_light_factor():
+    assert ph.cloud_light_factor(0.0, 20.0) == 1.0
+    overcast = ph.cloud_light_factor(1.0, 20.0)
+    assert 0.1 < overcast < 0.4                                        # thick overcast keeps 10-40 % of clear-sky light
+    assert ph.cloud_light_factor(0.5, 20.0) == pytest.approx(1 - 0.5 * (1 - overcast))

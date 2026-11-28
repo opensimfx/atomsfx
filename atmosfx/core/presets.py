@@ -75,6 +75,10 @@ class CloudLayerCfg:
     seed: int = 1
     radius_m: float = 15000.0
     edge_fade: float = 0.35
+    cell: float = 0.0                # storm cell strength: 0 off, 1 fills the cell with cloud
+    cell_bearing_deg: float = 0.0    # compass bearing of the cell from the world origin
+    cell_distance_m: float = 15000.0
+    cell_radius_m: float = 7000.0
 
 
 @dataclass
@@ -195,7 +199,8 @@ RANGES = {
 LAYER_RANGES = {
     "altitude_m": (0, 20000), "thickness_m": (50, 15000), "coverage": (0, 1), "density": (0.0005, 0.5),
     "scale_m": (50, 20000), "detail": (0, 1), "anisotropy": (0, 0.95), "wind_speed_ms": (0, 100),
-    "radius_m": (1000, 100000), "edge_fade": (0, 0.95),
+    "radius_m": (1000, 100000), "edge_fade": (0, 0.95), "cell": (0, 1), "cell_bearing_deg": (0, 360),
+    "cell_distance_m": (0, 100000), "cell_radius_m": (500, 50000),
 }
 FOG_MODES = ("WORLD", "DOMAIN", "BOTH")
 

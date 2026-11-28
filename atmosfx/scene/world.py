@@ -100,6 +100,14 @@ def purge_stale_star_images(keep) -> None:
 
 
 # ------------------------------------------------------------------------------- update
+def _eclipse_tangent(sun):
+    """Unit vector across the Sun's disc, roughly horizontal: the direction the Moon's centre is offset."""
+    x, y, z = sun
+    t = (-y, x, 0.0)
+    n = math.hypot(t[0], t[1])
+    return (t[0] / n, t[1] / n, 0.0) if n > 1e-6 else (1.0, 0.0, 0.0)
+
+
 def update(scene: bpy.types.Scene, s, view, quality: str) -> None:
     """Push a ``SkyView`` and the settings into the world's node groups."""
     w = ensure_world(scene)
@@ -139,6 +147,11 @@ def update(scene: bpy.types.Scene, s, view, quality: str) -> None:
         "Ground Enabled": 1.0 if s.ground_enabled else 0.0, "Ground Blend": s.ground_blend,
         "Deck Color": (*view.deck_color, 1.0), "Deck Sun Light": (*view.deck_sun_light, 1.0),
         "Moon Glow": view.moon_glow,
+        "Halo Strength": s.halo_strength, "Halo Size": math.radians(max(s.halo_size_deg, 0.1)),
+        "Horizon Offset": math.sin(math.radians(s.horizon_offset_deg)),
+        "Sky Tint": (*s.sky_tint, 1.0), "Horizon Tint": (*s.horizon_tint, 1.0),
+        "Eclipse Offset": view.eclipse_offset, "Eclipse Tangent": _eclipse_tangent(sv),
+        "Corona": view.corona, "Eclipse Glow": (*view.eclipse_glow, 1.0),
     }
     if s.deck_enabled:
         thr = cloudlib.coverage_threshold(s.deck_coverage)

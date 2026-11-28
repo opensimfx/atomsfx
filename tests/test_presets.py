@@ -78,7 +78,8 @@ def test_presets_are_physically_sensible():
     day = [p for p in lib.values() if p.category in ("Weather", "Time of day") and p.sun.elevation_deg > 20]
     assert day and all(not p.stars.enabled for p in day)
     assert lib["storm_cumulonimbus"].clouds[0].kind == "CUMULONIMBUS"
-    assert len(lib["storm_cumulonimbus"].clouds) == 2
+    storm = lib["storm_cumulonimbus"].clouds[0]
+    assert storm.cell == 1.0 and storm.cell_distance_m + storm.cell_radius_m < storm.radius_m   # the cell fits the domain
     assert lib["valley_fog"].fog.mode == "BOTH"
 
 

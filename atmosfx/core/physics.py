@@ -114,6 +114,20 @@ def rayleigh_optical_depth(wavelength_um: float, pressure_ratio: float = 1.0) ->
     return pressure_ratio * 0.008569 * l ** -4 * (1.0 + 0.0113 * l ** -2 + 0.00013 * l ** -4)
 
 
+def rayleigh_extinction_rgb(air_density: float = 1.0) -> tuple[float, float, float]:
+    """Sea-level molecular (Rayleigh) extinction per RGB channel in 1/m: vertical optical depth / scale height.
+    About (6.6, 12.2, 25.3) x 1e-6: 20 km of air removes 12 % of red and 40 % of blue, which is why distant
+    ridges turn blue (aerial perspective) before aerosol greys them."""
+    k = max(air_density, 0.0) / RAYLEIGH_SCALE_HEIGHT_M
+    return tuple(k * rayleigh_optical_depth(w) for w in RGB_WAVELENGTHS_UM)  # type: ignore
+
+
+def aerosol_extinction(visibility_m: float, air_density: float = 1.0) -> float:
+    """Aerosol (haze, fog, dust) extinction in 1/m at 550 nm: the Koschmieder total minus the share of clean air,
+    so a 'visibility' setting describes the whole atmosphere and pure air alone (~320 km) is the upper bound."""
+    return max(koschmieder_extinction(visibility_m) - rayleigh_extinction_rgb(air_density)[1], 0.0)
+
+
 def aerosol_optical_depth(wavelength_um: float, beta: float = 0.05, alpha: float = 1.3) -> float:
     """Angstrom law tau_a = beta * lambda^-alpha. beta ~0.02 pristine, 0.05 clear, 0.2 hazy, 0.5+ smog."""
     return beta * wavelength_um ** -alpha
@@ -381,6 +395,58 @@ def exposure_ev(illuminance_lux: float, reference_lux: float = SUN_LUX_ZENITH_CL
     return compensation * math.log2(reference_lux / illuminance_lux)
 
 
+# Horizontal illuminance (lux) from the sky alone in clear weather, sun at or below the horizon. Log-linear
+# interpolation of the twilight values tabulated by the U.S. Naval Observatory (Bond and Henderson 1963):
+# ~730 lux at sunset, 3.4 at the end of civil twilight, 0.008 at the end of nautical, ~0.0007 starlight + airglow.
+TWILIGHT_LUX = ((0.0, 730.0), (-2.0, 200.0), (-4.0, 40.0), (-6.0, 3.4), (-8.0, 0.4), (-10.0, 0.06),
+                (-12.0, 0.008), (-15.0, 0.0012), (-18.0, 0.0007))
+
+
+def daylight_illuminance_lux(sun_elevation_deg: float, aerosol_beta: float = 0.05) -> float:
+    """Clear-sky horizontal illuminance from the Sun and sky (lux). Direct beam from the transmittance model plus a
+    diffuse sky term (730 lux at sunset, ~20 000 lux with a high sun); the twilight table below the horizon."""
+    el = sun_elevation_deg
+    if el >= 0.0:
+        sin_el = math.sin(math.radians(el))
+        direct = SUN_LUX_ZENITH_CLEAR * sun_strength_ratio(el, aerosol_beta) * sin_el
+        return direct + 730.0 + 19000.0 * sin_el ** 0.6
+    if el <= TWILIGHT_LUX[-1][0]:
+        return TWILIGHT_LUX[-1][1]
+    for (e0, l0), (e1, l1) in zip(TWILIGHT_LUX, TWILIGHT_LUX[1:]):
+        if e1 <= el <= e0:
+            t = (el - e0) / (e1 - e0)
+            return 10.0 ** lerp(math.log10(l0), math.log10(l1), t)
+    return TWILIGHT_LUX[-1][1]
+
+
+DAY_LUX = 1.2e5                 # noon reference for the cinematic key
+
+
+# (real stops below noon, on-screen stops below noon): how a film compresses the ~28 stops from noon to starlight.
+# Twilight and night darken slowly so they read as night but stay legible ("day for night").
+CINEMATIC_KEY = ((0.0, 0.0), (2.0, 0.4), (4.0, 1.1), (7.4, 1.3), (10.4, 1.85), (13.3, 2.35), (19.0, 3.2),
+                 (28.0, 5.0))
+
+
+def cinematic_key_stops(illuminance_lux: float) -> float:
+    """How many stops darker than noon a scene should *look* on screen, from its real illuminance: noon 0, golden
+    hour ~1.1, sunset 1.3, civil twilight 1.9, blue hour 2.4, full moon 3.8, starlight 5 (piecewise linear in real
+    stops). Applied to the sky-weighted irradiance of ``skyview.auto_exposure``; tuned on the look bench."""
+    r = max(math.log2(DAY_LUX / max(illuminance_lux, 1e-9)), 0.0)
+    for (r0, k0), (r1, k1) in zip(CINEMATIC_KEY, CINEMATIC_KEY[1:]):
+        if r <= r1:
+            return lerp(k0, k1, (r - r0) / (r1 - r0))
+    return CINEMATIC_KEY[-1][1]
+
+
+def cloud_light_factor(coverage: float, optical_depth: float, g: float = 0.6) -> float:
+    """Fraction of clear-sky ground illuminance left under a cloud layer (direct plus diffuse transmission).
+    Diffuse transmission of a conservative slab ~ 1 / (1 + 0.75 (1 - g) tau) (two-stream, Bohren 1987); g 0.6 is the
+    effective asymmetry of the AtmosFX cloud phase blend."""
+    t = 1.0 / (1.0 + 0.75 * (1.0 - g) * max(optical_depth, 0.0))
+    return 1.0 - clamp(coverage) * (1.0 - t)
+
+
 # ---------------------------------------------------------------------- clouds
 CLOUD_TYPE_ALTITUDES_M = {
     # genus: (base_min, base_max, typical thickness) - WMO International Cloud Atlas levels, mid-latitudes
@@ -411,3 +477,42 @@ def horizon_distance_m(height_m: float, radius_m: float = EARTH_RADIUS_M) -> flo
 
 def apparent_angular_diameter_deg(true_diameter_m: float, distance_m: float) -> float:
     return math.degrees(2.0 * math.atan(0.5 * true_diameter_m / distance_m))
+
+
+# ------------------------------------------------------------------ solar eclipse
+MOON_SUN_RADIUS_RATIO = 1.03   # apparent Moon / Sun radius at a typical total eclipse (0.95 annular .. 1.08)
+
+
+def eclipse_offset(magnitude: float, k: float = MOON_SUN_RADIUS_RATIO) -> float:
+    """Centre separation of Moon and Sun in solar radii for an eclipse of ``magnitude`` (the share of the Sun's
+    diameter the Moon covers, the standard definition; 1 = second contact): d = 1 + k - 2 m, never below 0."""
+    m = min(max(float(magnitude), 0.0), 1.0 + k)
+    return max(1.0 + k - 2.0 * m, 0.0)
+
+
+def eclipse_visible_fraction(magnitude: float, k: float = MOON_SUN_RADIUS_RATIO) -> float:
+    """Share of the solar disc left uncovered (area of two overlapping circles; limb darkening ignored)."""
+    if magnitude <= 0.0:
+        return 1.0
+    d = eclipse_offset(magnitude, k)
+    r1, r2 = 1.0, k
+    if d >= r1 + r2:
+        return 1.0
+    if d <= abs(r2 - r1) + 1e-9:          # internal contact (float noise at magnitude 1 counts)
+        covered = math.pi * min(r1, r2) ** 2
+    else:
+        a1 = r1 * r1 * math.acos(max(-1.0, min(1.0, (d * d + r1 * r1 - r2 * r2) / (2.0 * d * r1))))
+        a2 = r2 * r2 * math.acos(max(-1.0, min(1.0, (d * d + r2 * r2 - r1 * r1) / (2.0 * d * r2))))
+        a3 = 0.5 * math.sqrt(max((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2), 0.0))
+        covered = a1 + a2 - a3
+    return max(0.0, 1.0 - covered / math.pi)
+
+
+# Totality on AtmosFX's display scale: physically the zenith falls to ~1e-4 of daylight and the inner corona is
+# ~1e-6 of the photosphere, but AtmosFX compresses night (exposure caps at 10, the moon is boosted ~2e4 over its
+# physical ratio to the Sun), so a strictly physical totality would sit under the airglow floor. It is placed on
+# the same scale as AtmosFX's night instead: the sky dims to about twilight, the horizon keeps an orange glow
+# all round (sunlit air outside the Moon's shadow, 5 % of the day sky) and a pearly corona round the black disc.
+ECLIPSE_TOTALITY_SKY = 5e-3
+ECLIPSE_HORIZON_GLOW = 0.05
+ECLIPSE_CORONA_MOON = 0.01    # corona radiance at the limb / the full moon's disc radiance (render-calibrated)

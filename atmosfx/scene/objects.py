@@ -105,7 +105,7 @@ def update_cloud_sun(scene, s, view) -> None:
     cloud_objs = [o for o in bpy.data.objects if o.get(ROLE_KEY) == "cloud"]
     ground = bpy.data.objects.get(SUN_NAME)
     cs = bpy.data.objects.get(CLOUD_SUN_NAME)
-    if not cloud_objs or not s.use_sun_lamp or ground is None:
+    if not cloud_objs or not s.use_sun_lamp or ground is None or haze_overlaps_clouds(s):
         if cs is not None:
             bpy.data.objects.remove(cs, do_unlink=True)
         if ground is not None:
@@ -206,8 +206,11 @@ def update_cloud_layers(scene, s, view, quality: str) -> None:
     for i, layer in enumerate(s.clouds):
         name = CLOUD_PREFIX + str(i + 1)
         obj = _ensure_domain(scene, name, "cloud")
-        obj.scale = (layer.radius_m, layer.radius_m, layer.thickness_m)
-        obj.location.z = layer.altitude_m
+        # the shader places density by absolute altitude, so the domain is padded a few metres (a different amount
+        # per layer): stacked layers and the haze dome then never share a face, which streaks in Cycles
+        pad = 3.0 + 1.7 * i
+        obj.scale = (layer.radius_m, layer.radius_m, layer.thickness_m + 2.0 * pad)
+        obj.location.z = layer.altitude_m - pad
         obj.hide_render = not layer.enabled
         obj.hide_viewport = not layer.enabled
         _follow_camera(scene, obj, layer.follow_camera)
@@ -237,9 +240,57 @@ def update_cloud_layers(scene, s, view, quality: str) -> None:
                     sock.default_value = v
                 except TypeError:
                     sock.default_value = tuple(v)
+        _key_lightning(scene, mat, node, layer, obj)
 
 
-def _fill_fog_object(scene, obj, name: str, s, visibility_m: float, ambient=(0.0, 0.0, 0.0)) -> None:
+LIGHTNING_ACTION = "AtmosFX Lightning "
+
+
+def _key_lightning(scene, mat, node, layer, obj) -> None:
+    """Key the layer's flashes on its material (strength per stroke, position held per flash). The material tree
+    carries no other animation (the time driver lives on the shared group), so its action is ours to replace."""
+    nt = mat.node_tree
+    ad = nt.animation_data
+    if ad is not None and ad.action is not None and ad.action.name.startswith(LIGHTNING_ACTION):
+        old = ad.action
+        ad.action = None
+        if old.users == 0:
+            bpy.data.actions.remove(old)
+    strength, pos_sock = node.inputs.get("Lightning Strength"), node.inputs.get("Lightning Position")
+    if strength is None:
+        return
+    strength.default_value = 0.0
+    if getattr(layer, "lightning", 0.0) <= 0.0:
+        return
+    fps = scene.render.fps / (scene.render.fps_base or 1.0)
+    keys, flashes, radius = cloudlib.lightning_keys(layer, scene.frame_start, scene.frame_end, fps,
+                                                    tuple(obj.location[:2]))
+    if not keys:
+        return
+    node.inputs["Lightning Radius"].default_value = radius
+    for f, v in keys:
+        strength.default_value = v
+        strength.keyframe_insert("default_value", frame=f)
+    for fl, pos in flashes:
+        pos_sock.default_value = pos
+        for f in (fl.start_frame - 1, max(f for f, _ in fl.strokes) + 2):
+            pos_sock.keyframe_insert("default_value", frame=f)
+    if nt.animation_data is not None and nt.animation_data.action is not None:
+        nt.animation_data.action.name = LIGHTNING_ACTION + mat.name
+
+
+# Emission fill per quality tier (see clouds.QUALITY_FILL): the multiple scattering the volume-bounce cap cuts off.
+FOG_FILL = {"DRAFT": 1.0, "PREVIEW": 0.5, "FINAL": 0.3}
+
+
+def fog_fill(quality: str, sigma: float, depth_m: float) -> float:
+    """Gain of the fog's multiple-scatter emission. Light escapes a medium through its smallest dimension, so
+    multiple scattering only matters once the *vertical* optical depth sigma x depth is large: none for haze (a clear
+    day is ~0.15), full for dense fog (~15). The tier gain is the share the bounce cap cuts off."""
+    return FOG_FILL.get(quality, 0.5) * physics.smoothstep(1.0, 8.0, sigma * depth_m)
+
+
+def _fill_fog_object(scene, obj, name: str, s, visibility_m: float, ambient=(0.0, 0.0, 0.0), air: bool = False) -> None:
     mat = _volume_material(name, volumes.ensure_fog_group(scene), _fog_edge_fade)
     if not obj.data.materials:
         obj.data.materials.append(mat)
@@ -247,13 +298,22 @@ def _fill_fog_object(scene, obj, name: str, s, visibility_m: float, ambient=(0.0
     obj.material_slots[0].material = mat
     node = mat.node_tree.nodes["AtmosFX Group"]
     node.node_tree = volumes.ensure_fog_group(scene)
+    sigma = physics.aerosol_extinction(max(visibility_m, 5.0), s.air_density if air else 0.0)
+    depth_m = s.fog_scale_height if air else min(s.fog_domain_height, s.fog_scale_height)
     vals = {
-        "Density": physics.koschmieder_extinction(max(visibility_m, 5.0)), "Scale Height": s.fog_scale_height,
+        "Density": sigma,
+        "Scale Height": s.fog_scale_height,
         "Base Altitude": s.fog_base_altitude, "Anisotropy": s.fog_anisotropy, "Color": (*s.fog_color, 1.0),
         "Absorption": s.fog_absorption, "Noise Amount": s.fog_noise_amount,
         "Noise Frequency": 1.0 / max(s.fog_noise_scale, 1.0), "Wind Velocity": (1.0, 0.0, 0.0),
-        "Ambient": (*ambient, 1.0),
+        "Ambient": (*ambient, 1.0), "Fill": fog_fill(s.quality, sigma, depth_m),
     }
+    # the camera-following haze dome carries the clean air too; a local fog bank must not add it twice
+    beta = physics.rayleigh_extinction_rgb(s.air_density) if air else (0.0, 0.0, 0.0)
+    vals["Air Density"] = beta[2]
+    if beta[2] > 0.0:
+        vals["Air Color"] = (beta[0] / beta[2], beta[1] / beta[2], 1.0, 1.0)
+    vals["Air Scale Height"] = physics.RAYLEIGH_SCALE_HEIGHT_M
     for k, v in vals.items():
         sock = node.inputs.get(k)
         if sock is not None:
@@ -263,15 +323,50 @@ def _fill_fog_object(scene, obj, name: str, s, visibility_m: float, ambient=(0.0
                 sock.default_value = tuple(v)
 
 
+AIR_REACH_M = 40000.0      # the dome carries clean air at least this far, so ridges 20-30 km out turn blue
+AIR_HEIGHT_M = 4000.0      # and at least this high (half the Rayleigh scale height; the sky texture does the rest),
+                           # but never above the lowest cloud base
+
+
 def haze_dimensions(s) -> tuple[float, float, float]:
     """(radius, height, base z) of the camera-following haze dome that stands in for world fog.
 
-    Radius is 1.4 x visibility, where the 2 % contrast distance has fallen to 0.3 %, so the dome edge is invisible.
-    Height is five scale heights, where the exponential profile is below 1 %, plus a skirt under the base altitude.
+    Radius is 1.4 x visibility, where the 2 % contrast distance has fallen to 0.3 %, so the dome edge is invisible,
+    but at least AIR_REACH_M for the air. Height is five aerosol scale heights (the profile below 1 %), at least
+    AIR_HEIGHT_M, plus a skirt under the base altitude.
     """
-    radius = min(max(1.4 * s.fog_visibility, 300.0), 120000.0)
-    height = min(5.0 * s.fog_scale_height, 30000.0) + 200.0
-    return radius, height, s.fog_base_altitude - 200.0
+    radius = min(max(1.4 * s.fog_visibility, AIR_REACH_M), 120000.0)
+    height = min(max(5.0 * s.fog_scale_height, AIR_HEIGHT_M), 30000.0) + 200.0
+    z0 = s.fog_base_altitude - 200.0
+    base = lowest_cloud_base(s)
+    if base is not None and base - z0 - DOME_GAP_M >= MIN_DOME_HEIGHT_M:
+        height = min(height, base - z0 - DOME_GAP_M)   # haze is the boundary layer: it ends under the cloud base
+    return radius, height, z0
+
+
+MIN_DOME_HEIGHT_M = 300.0
+DOME_GAP_M = 25.0          # coplanar volume faces (dome top on a cloud base) streak in Cycles; keep them apart
+
+
+def lowest_cloud_base(s):
+    bases = [l.altitude_m for l in s.clouds if l.enabled]
+    return min(bases) if bases else None
+
+
+def haze_overlaps_clouds(s) -> bool:
+    """True when the haze dome or the fog bank shares height with a cloud layer. Cycles light linking does not
+    separate overlapping volumes (measured, Blender 5.2.3: a cumulus layer inside the haze dome lost the light of
+    the cloud sun and rendered grey), so the cloud-sun split is only used when the volumes are apart."""
+    base = lowest_cloud_base(s)
+    if base is None or not s.fog_enabled:
+        return False
+    tops = []
+    if s.fog_mode in ("WORLD", "BOTH"):
+        r, h, z0 = haze_dimensions(s)
+        tops.append(z0 + h)
+    if s.fog_mode in ("DOMAIN", "BOTH"):
+        tops.append(s.fog_base_altitude + s.fog_domain_height)
+    return max(tops) > base + 1.0
 
 
 def update_fog(scene, s, view) -> None:
@@ -288,7 +383,7 @@ def update_fog(scene, s, view) -> None:
             obj.scale = (r, r, h)
             obj.location.z = z0
             _follow_camera(scene, obj, True)
-            _fill_fog_object(scene, obj, name, s, s.fog_visibility, view.fog_ambient)
+            _fill_fog_object(scene, obj, name, s, s.fog_visibility, view.fog_ambient, air=True)
         else:
             obj.scale = (s.fog_domain_radius, s.fog_domain_radius, s.fog_domain_height)
             obj.location.z = s.fog_base_altitude
